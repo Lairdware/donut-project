@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+.env
+
+# Generierte Trainingsdaten (zu groß für Git)
+data/
+dataset/pdfs/
+dataset/images/
+
+# Trainierte Modellgewichte (zu groß für Git)
+output/
+
+# Labels behalten (eigene Annotationen)
+!dataset/labels.jsonl
+
+# OS
+.DS_Store
+Thumbs.db

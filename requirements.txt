@@ -1,0 +1,14 @@
+# PyTorch mit CUDA 12.4 für RTX 4090
+# Installieren mit:
+#   pip install "torch>=2.6.0" torchvision --index-url https://download.pytorch.org/whl/cu124
+#   pip install -r requirements.txt
+#
+# CUDA-Version prüfen: nvidia-smi  (RTX 4090 → CUDA 12.x)
+torch>=2.6.0
+torchvision>=0.21.0
+transformers>=4.37.0
+datasets>=2.14.0
+sentencepiece>=0.1.99
+Pillow>=10.0.0
+pypdfium2>=4.0.0
+reportlab>=4.0.0
