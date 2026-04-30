@@ -18,7 +18,10 @@ from pathlib import Path
 import torch
 from torch.amp import GradScaler, autocast
 from torch.utils.data import DataLoader, Dataset
-from transformers import DonutProcessor, VisionEncoderDecoderModel, get_scheduler
+from transformers import (
+    DonutProcessor, VisionEncoderDecoderModel, get_scheduler,
+    StoppingCriteria, StoppingCriteriaList,
+)
 from PIL import Image
 
 # ---------------------------------------------------------------------------
@@ -33,13 +36,13 @@ TASK_TOKEN        = "<s_order>"
 TASK_END_TOKEN    = "</s_order>"
 ORDER_NUM_TOKEN   = "<s_order_number>"
 ORDER_NUM_END     = "</s_order_number>"
-TOTAL_TOKEN       = "<s_total>"
-TOTAL_END         = "</s_total>"
+SOLD_TO_TOKEN     = "<s_sold_to_party_name>"
+SOLD_TO_END       = "</s_sold_to_party_name>"
 
 # Zielformat (Labels, <s_order> wird automatisch vorne eingefügt):
-#   beide Felder : <s_order_number>ORD-…</s_order_number><s_total>…</s_total></s_order>
+#   beide Felder : <s_order_number>ORD-…</s_order_number><s_sold_to_party_name>…</s_sold_to_party_name></s_order>
 #   nur Nummer   : <s_order_number>ORD-…</s_order_number></s_order>
-#   nur Betrag   : <s_total>…</s_total></s_order>
+#   nur Name     : <s_sold_to_party_name>…</s_sold_to_party_name></s_order>
 
 IMAGE_SIZE        = (1280, 960)
 MAX_LENGTH        = 56
@@ -78,15 +81,15 @@ class OrderDataset(Dataset):
 
         gt           = json.loads(sample["ground_truth"])
         order_number = gt["gt_parse"].get("order_number", "")
-        total        = gt["gt_parse"].get("total", "")
+        sold_to      = gt["gt_parse"].get("sold_to_party_name", "")
 
         # Fehlende Felder → Tag weglassen.
         # Modell lernt: kein Tag im Output = Feld nicht im Dokument.
         parts = ""
         if order_number:
             parts += f"{ORDER_NUM_TOKEN}{order_number}{ORDER_NUM_END}"
-        if total:
-            parts += f"{TOTAL_TOKEN}{total}{TOTAL_END}"
+        if sold_to:
+            parts += f"{SOLD_TO_TOKEN}{sold_to}{SOLD_TO_END}"
         target_sequence = parts + TASK_END_TOKEN
 
         pixel_values = self.processor(
@@ -116,7 +119,7 @@ def setup_model_and_processor():
     processor.tokenizer.add_special_tokens({"additional_special_tokens": [
         TASK_TOKEN, TASK_END_TOKEN,
         ORDER_NUM_TOKEN, ORDER_NUM_END,
-        TOTAL_TOKEN, TOTAL_END,
+        SOLD_TO_TOKEN, SOLD_TO_END,
     ]})
 
     processor.image_processor.size = {"height": IMAGE_SIZE[0], "width": IMAGE_SIZE[1]}
@@ -125,10 +128,29 @@ def setup_model_and_processor():
     model = VisionEncoderDecoderModel.from_pretrained(PRETRAINED_MODEL)
     model.decoder.resize_token_embeddings(len(processor.tokenizer))
 
+    decoder_start_id = processor.tokenizer.convert_tokens_to_ids([TASK_TOKEN])[0]
+
     model.config.pad_token_id           = processor.tokenizer.pad_token_id
-    model.config.decoder_start_token_id = processor.tokenizer.convert_tokens_to_ids([TASK_TOKEN])[0]
+    model.config.decoder_start_token_id = decoder_start_id
+
+    # In transformers 5.x wird generation_config statt config verwendet —
+    # beide setzen damit es auf 4.x und 5.x identisch funktioniert.
+    model.generation_config.decoder_start_token_id = decoder_start_id
+    model.generation_config.pad_token_id           = processor.tokenizer.pad_token_id
+    model.generation_config.eos_token_id           = processor.tokenizer.eos_token_id
 
     return model, processor
+
+
+# ---------------------------------------------------------------------------
+# Stopping Criteria (version-robust)
+# ---------------------------------------------------------------------------
+class StopOnTaskEnd(StoppingCriteria):
+    def __init__(self, task_end_token_id: int):
+        self.task_end_token_id = task_end_token_id
+
+    def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs) -> bool:
+        return input_ids[0, -1].item() == self.task_end_token_id
 
 
 # ---------------------------------------------------------------------------
@@ -227,7 +249,8 @@ def train():
         correct  = 0
         n_total  = 0
 
-        task_end_id = processor.tokenizer.convert_tokens_to_ids(TASK_END_TOKEN)
+        task_end_id   = processor.tokenizer.convert_tokens_to_ids(TASK_END_TOKEN)
+        stop_criteria = StoppingCriteriaList([StopOnTaskEnd(task_end_id)])
 
         with torch.no_grad():
             for batch in val_loader:
@@ -247,12 +270,18 @@ def train():
                     ),
                     max_length=MAX_LENGTH,
                     pad_token_id=processor.tokenizer.pad_token_id,
-                    eos_token_id=[processor.tokenizer.eos_token_id, task_end_id],
-                    repetition_penalty=1.8,
+                    eos_token_id=processor.tokenizer.eos_token_id,
+                    stopping_criteria=stop_criteria,
                 )
 
                 for gen_ids, lbl_ids in zip(generated, lbl):
-                    pred = processor.tokenizer.decode(gen_ids, skip_special_tokens=False)
+                    # Generierte Sequenz bei </s_order> abschneiden —
+                    # robuster als eos_token_id-Liste (Versionsunabhängig)
+                    gen_list = gen_ids.tolist()
+                    if task_end_id in gen_list:
+                        gen_list = gen_list[:gen_list.index(task_end_id)]
+                    pred = processor.tokenizer.decode(gen_list, skip_special_tokens=False)
+
                     lbl_clean = lbl_ids.clone()
                     lbl_clean[lbl_clean == -100] = processor.tokenizer.pad_token_id
                     gt = processor.tokenizer.decode(lbl_clean, skip_special_tokens=False)

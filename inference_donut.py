@@ -25,7 +25,10 @@ import pypdfium2 as pdfium
 import torch
 import torch.nn.functional as F
 from PIL import Image
-from transformers import DonutProcessor, VisionEncoderDecoderModel
+from transformers import (
+    DonutProcessor, VisionEncoderDecoderModel,
+    StoppingCriteria, StoppingCriteriaList,
+)
 
 # ---------------------------------------------------------------------------
 # Konfiguration (muss mit train_donut.py übereinstimmen)
@@ -35,8 +38,8 @@ TASK_TOKEN         = "<s_order>"
 TASK_END_TOKEN     = "</s_order>"
 ORDER_NUM_TOKEN    = "<s_order_number>"
 ORDER_NUM_END      = "</s_order_number>"
-TOTAL_TOKEN        = "<s_total>"
-TOTAL_END          = "</s_total>"
+SOLD_TO_TOKEN      = "<s_sold_to_party_name>"
+SOLD_TO_END        = "</s_sold_to_party_name>"
 MAX_LENGTH         = 56   # etwas mehr Puffer für lange Beträge
 CONFIDENCE_HIGH    = 0.85
 CONFIDENCE_LOW     = 0.50
@@ -60,7 +63,7 @@ def compute_confidences(sequences: torch.Tensor, scores: tuple,
     structural_ids = set(tok.convert_tokens_to_ids([
         TASK_TOKEN, TASK_END_TOKEN,
         ORDER_NUM_TOKEN, ORDER_NUM_END,
-        TOTAL_TOKEN, TOTAL_END,
+        SOLD_TO_TOKEN, SOLD_TO_END,
     ]))
     structural_ids.discard(tok.unk_token_id)
 
@@ -81,11 +84,11 @@ def compute_confidences(sequences: torch.Tensor, scores: tuple,
     # Feld-Konfidenzen
     field_start_map = {
         tok.convert_tokens_to_ids(ORDER_NUM_TOKEN): "order_number",
-        tok.convert_tokens_to_ids(TOTAL_TOKEN):     "total",
+        tok.convert_tokens_to_ids(SOLD_TO_TOKEN):   "sold_to_party_name",
     }
     field_end_ids = {
         tok.convert_tokens_to_ids(ORDER_NUM_END),
-        tok.convert_tokens_to_ids(TOTAL_END),
+        tok.convert_tokens_to_ids(SOLD_TO_END),
         tok.convert_tokens_to_ids(TASK_END_TOKEN),
     }
 
@@ -130,6 +133,18 @@ def confidence_label(score: float) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Stopping Criteria — stoppt sobald </s_order> generiert wurde.
+# Robuster als eos_token_id-Liste (API-stabil über alle transformers-Versionen)
+# ---------------------------------------------------------------------------
+class StopOnTaskEnd(StoppingCriteria):
+    def __init__(self, task_end_token_id: int):
+        self.task_end_token_id = task_end_token_id
+
+    def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs) -> bool:
+        return input_ids[0, -1].item() == self.task_end_token_id
+
+
+# ---------------------------------------------------------------------------
 # PDF → PIL (erste Seite)
 # ---------------------------------------------------------------------------
 def pdf_first_page_to_image(pdf_path: str, dpi: int = 300) -> Image.Image:
@@ -149,6 +164,14 @@ def load_model(model_path: str):
     print(f"Lade Modell von '{model_path}' auf {device} ...")
     processor = DonutProcessor.from_pretrained(model_path)
     model     = VisionEncoderDecoderModel.from_pretrained(model_path)
+
+    # Explizit setzen — in transformers 4.x und 5.x unterschiedlich gelesen
+    decoder_start_id = processor.tokenizer.convert_tokens_to_ids([TASK_TOKEN])[0]
+    model.config.decoder_start_token_id           = decoder_start_id
+    model.generation_config.decoder_start_token_id = decoder_start_id
+    model.generation_config.pad_token_id           = processor.tokenizer.pad_token_id
+    model.generation_config.eos_token_id           = processor.tokenizer.eos_token_id
+
     model.to(device)
     model.eval()
     return model, processor, device
@@ -186,7 +209,8 @@ def predict_single(image_path: str, model, processor, device,
         image = Image.open(image_path).convert("RGB")
     pixel_values = processor(image, return_tensors="pt").pixel_values.to(device)
 
-    task_end_id = processor.tokenizer.convert_tokens_to_ids(TASK_END_TOKEN)
+    task_end_id  = processor.tokenizer.convert_tokens_to_ids(TASK_END_TOKEN)
+    stop_criteria = StoppingCriteriaList([StopOnTaskEnd(task_end_id)])
 
     with torch.no_grad():
         outputs = model.generate(
@@ -196,7 +220,8 @@ def predict_single(image_path: str, model, processor, device,
             ),
             max_length=MAX_LENGTH,
             pad_token_id=processor.tokenizer.pad_token_id,
-            eos_token_id=[processor.tokenizer.eos_token_id, task_end_id],
+            eos_token_id=processor.tokenizer.eos_token_id,
+            stopping_criteria=stop_criteria,
             num_beams=1,
             repetition_penalty=1.8,
             output_scores=True,
@@ -233,7 +258,7 @@ def process_directory(dir_path: str, model, processor, device) -> list:
         return []
 
     print(f"{len(images)} Bilder. Starte Inferenz ...\n")
-    hdr = f"{'#':<5} {'Datei':<28} {'Bestellnummer':<22} {'Betrag':<16} {'Konf':>6}  Status"
+    hdr = f"{'#':<5} {'Datei':<28} {'Bestellnummer':<22} {'Sold-to Party':<30} {'Konf':>6}  Status"
     print(hdr)
     print("-" * len(hdr))
 
@@ -247,24 +272,24 @@ def process_directory(dir_path: str, model, processor, device) -> list:
         doc_conf = result["confidence"]["document"]
         status   = confidence_label(doc_conf)
 
-        order_number = parsed.get("order_number", MISSING_LABEL)
-        total        = parsed.get("total",        MISSING_LABEL)
+        order_number  = parsed.get("order_number",      MISSING_LABEL)
+        sold_to       = parsed.get("sold_to_party_name", MISSING_LABEL)
 
         print(
-            f"{i:<5} {img_path.name:<28} {order_number:<22} {total:<16} "
+            f"{i:<5} {img_path.name:<28} {order_number:<22} {sold_to:<30} "
             f"{doc_conf:>5.1%}  [{status}]  ({elapsed:.2f}s)"
         )
 
         results.append({
-            "file":                    img_path.name,
-            "order_number":            order_number,
-            "total":                   total,
-            "confidence_document":     doc_conf,
-            "confidence_order_number": result["confidence"]["fields"].get("order_number", 0.0),
-            "confidence_total":        result["confidence"]["fields"].get("total", 0.0),
-            "confidence_label":        status,
-            "raw_output":              result["raw_output"],
-            "time_s":                  round(elapsed, 3),
+            "file":                         img_path.name,
+            "order_number":                 order_number,
+            "sold_to_party_name":           sold_to,
+            "confidence_document":          doc_conf,
+            "confidence_order_number":      result["confidence"]["fields"].get("order_number", 0.0),
+            "confidence_sold_to_party_name": result["confidence"]["fields"].get("sold_to_party_name", 0.0),
+            "confidence_label":             status,
+            "raw_output":                   result["raw_output"],
+            "time_s":                       round(elapsed, 3),
         })
 
     return results
@@ -277,10 +302,10 @@ def evaluate(labels_file: str, img_dir: str, model, processor, device):
     with open(labels_file, encoding="utf-8") as f:
         labels = [json.loads(l) for l in f if l.strip()]
 
-    correct_order = correct_total = correct_both = n = 0
+    correct_order = correct_sold_to = correct_both = n = 0
 
     print(f"{len(labels)} Labels. Starte Evaluation ...\n")
-    hdr = f"{'Datei':<28} {'Pred-Nr':<22} {'GT-Nr':<22} {'Pred-€':<16} {'GT-€':<16}  OK?"
+    hdr = f"{'Datei':<28} {'Pred-Nr':<22} {'GT-Nr':<22} {'Pred-Sold-to':<30} {'GT-Sold-to':<30}  OK?"
     print(hdr)
     print("-" * len(hdr))
 
@@ -292,31 +317,31 @@ def evaluate(labels_file: str, img_dir: str, model, processor, device):
         result = predict_single(str(img_path), model, processor, device)
         parsed = result["parsed"]
 
-        pred_nr    = parsed.get("order_number", "")
-        pred_total = parsed.get("total", "")
-        gt_nr      = entry.get("order_number", "")
-        gt_total   = entry.get("total", "")
+        pred_nr      = parsed.get("order_number",      "")
+        pred_sold_to = parsed.get("sold_to_party_name", "")
+        gt_nr        = entry.get("order_number",       "")
+        gt_sold_to   = entry.get("sold_to_party_name", "")
 
-        ok_nr    = pred_nr    == gt_nr
-        ok_total = pred_total == gt_total
-        ok_both  = ok_nr and ok_total
+        ok_nr      = pred_nr      == gt_nr
+        ok_sold_to = pred_sold_to == gt_sold_to
+        ok_both    = ok_nr and ok_sold_to
 
-        if ok_nr:    correct_order += 1
-        if ok_total: correct_total += 1
-        if ok_both:  correct_both  += 1
+        if ok_nr:      correct_order   += 1
+        if ok_sold_to: correct_sold_to += 1
+        if ok_both:    correct_both    += 1
         n += 1
 
-        status = "✓" if ok_both else ("~" if (ok_nr or ok_total) else "✗")
+        status = "✓" if ok_both else ("~" if (ok_nr or ok_sold_to) else "✗")
         print(
             f"{entry['image']:<28} {pred_nr or MISSING_LABEL:<22} {gt_nr or MISSING_LABEL:<22} "
-            f"{pred_total or MISSING_LABEL:<16} {gt_total or MISSING_LABEL:<16}  {status}"
+            f"{pred_sold_to or MISSING_LABEL:<30} {gt_sold_to or MISSING_LABEL:<30}  {status}"
         )
 
     if n:
         print(f"\n{'='*60}")
-        print(f"  Bestellnummer korrekt : {correct_order}/{n}  ({correct_order/n:.1%})")
-        print(f"  Gesamtbetrag korrekt  : {correct_total}/{n}  ({correct_total/n:.1%})")
-        print(f"  Beide korrekt         : {correct_both}/{n}  ({correct_both/n:.1%})")
+        print(f"  Bestellnummer korrekt   : {correct_order}/{n}  ({correct_order/n:.1%})")
+        print(f"  Sold-to Party korrekt   : {correct_sold_to}/{n}  ({correct_sold_to/n:.1%})")
+        print(f"  Beide korrekt           : {correct_both}/{n}  ({correct_both/n:.1%})")
         print(f"{'='*60}")
 
 
@@ -364,12 +389,12 @@ def main():
         doc_lbl  = confidence_label(conf["document"])
 
         print("\n" + "=" * 55)
-        print(f"  Bestellnummer      : {parsed.get('order_number', MISSING_LABEL)}")
-        print(f"  Gesamtbetrag       : {parsed.get('total',        MISSING_LABEL)}")
+        print(f"  Bestellnummer      : {parsed.get('order_number',       MISSING_LABEL)}")
+        print(f"  Sold-to Party      : {parsed.get('sold_to_party_name', MISSING_LABEL)}")
         print(f"  Rohausgabe         : {result['raw_output']}")
         print(f"  Dok-Konfidenz      : {conf['document']:.1%}  [{doc_lbl}]")
         for field, fc in conf["fields"].items():
-            name = "Bestellnummer" if field == "order_number" else "Gesamtbetrag"
+            name = "Bestellnummer" if field == "order_number" else "Sold-to Party"
             print(f"  Feld '{name}'  : {fc:.1%}  [{confidence_label(fc)}]")
         print(f"  Dauer              : {elapsed:.3f}s")
 

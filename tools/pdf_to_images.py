@@ -25,20 +25,19 @@ import pypdfium2 as pdfium
 
 
 def convert_pdf(pdf_path: Path, output_dir: Path, dpi: int = 200) -> list[str]:
-    """Konvertiert eine PDF-Datei in PNG-Bilder (eine Datei pro Seite)."""
+    """Konvertiert Seite 1 einer PDF-Datei in ein PNG-Bild."""
     pdf = pdfium.PdfDocument(str(pdf_path))
-    scale = dpi / 72.0  # pypdfium2 arbeitet intern mit 72 DPI (Punkte)
+    scale = dpi / 72.0
     created = []
 
-    for page_idx in range(len(pdf)):
-        page = pdf[page_idx]
-        bitmap = page.render(scale=scale, rotation=0)
-        pil_img = bitmap.to_pil()
+    page = pdf[0]
+    bitmap = page.render(scale=scale, rotation=0)
+    pil_img = bitmap.to_pil()
 
-        img_name = f"{pdf_path.stem}_p{page_idx}.png"
-        img_path = output_dir / img_name
-        pil_img.save(img_path, "PNG")
-        created.append(img_name)
+    img_name = f"{pdf_path.stem}_p0.png"
+    img_path = output_dir / img_name
+    pil_img.save(img_path, "PNG")
+    created.append(img_name)
 
     pdf.close()
     return created
