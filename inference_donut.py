@@ -279,6 +279,7 @@ def process_directory(dir_path: str, model, processor, device) -> list:
             f"{i:<5} {img_path.name:<28} {order_number:<22} {sold_to:<30} "
             f"{doc_conf:>5.1%}  [{status}]  ({elapsed:.2f}s)"
         )
+        print(f"      RAW: {result['raw_output']}")
 
         results.append({
             "file":                         img_path.name,
@@ -310,8 +311,10 @@ def evaluate(labels_file: str, img_dir: str, model, processor, device):
     print("-" * len(hdr))
 
     for entry in labels:
-        img_path = Path(img_dir) / entry["image"]
+        img_name = entry.get("image") or entry.get("file_name", "")
+        img_path = Path(img_dir) / img_name
         if not img_path.exists():
+            print(f"  [NICHT GEFUNDEN] {img_path}")
             continue
 
         result = predict_single(str(img_path), model, processor, device)
@@ -333,9 +336,10 @@ def evaluate(labels_file: str, img_dir: str, model, processor, device):
 
         status = "✓" if ok_both else ("~" if (ok_nr or ok_sold_to) else "✗")
         print(
-            f"{entry['image']:<28} {pred_nr or MISSING_LABEL:<22} {gt_nr or MISSING_LABEL:<22} "
+            f"{img_name:<28} {pred_nr or MISSING_LABEL:<22} {gt_nr or MISSING_LABEL:<22} "
             f"{pred_sold_to or MISSING_LABEL:<30} {gt_sold_to or MISSING_LABEL:<30}  {status}"
         )
+        print(f"  RAW: {result['raw_output']}")
 
     if n:
         print(f"\n{'='*60}")
