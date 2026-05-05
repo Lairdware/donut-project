@@ -49,19 +49,21 @@ def extract_from_pdf(pdf_path: str, model_path: str = _DEFAULT_MODEL) -> pd.Data
 
     result = subprocess.run(
         [_VENV_PYTHON, _EXTRACT_SCRIPT, pdf_path, "--model", model_path],
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
     )
 
-    if result.returncode != 0 or not result.stdout.strip():
+    stdout = result.stdout.decode("utf-8", errors="replace")
+    stderr = result.stderr.decode("utf-8", errors="replace")
+
+    if result.returncode != 0 or not stdout.strip():
         raise RuntimeError(
             f"Extraktion fehlgeschlagen (exit {result.returncode}):\n"
-            f"STDOUT: {result.stdout!r}\n"
-            f"STDERR: {result.stderr}"
+            f"STDOUT: {stdout!r}\n"
+            f"STDERR: {stderr}"
         )
 
-    data = json.loads(result.stdout)
+    data = json.loads(stdout)
 
     if isinstance(data, dict) and "error" in data:
         raise FileNotFoundError(data["error"])
