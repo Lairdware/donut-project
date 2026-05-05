@@ -73,7 +73,7 @@ def parse_output(token_sequence: str) -> dict:
     outer = re.search(r"<s_order>(.*?)</s_order>", token_sequence, re.DOTALL)
     inner = outer.group(1) if outer else token_sequence
     for match in re.finditer(r"<s_(\w+)>(.*?)</s_\1>", inner, re.DOTALL):
-        result[match.group(1)] = match.group(2).strip()
+        result[match.group(1)] = " ".join(match.group(2).split())
     return result
 
 
@@ -108,7 +108,6 @@ def predict(image: Image.Image, model, processor, device) -> dict:
             stopping_criteria=stop_criteria,
             num_beams=1,
             repetition_penalty=1.0,
-            no_repeat_ngram_size=4,
             output_scores=True,
             return_dict_in_generate=True,
         )

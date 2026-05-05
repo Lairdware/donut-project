@@ -76,7 +76,8 @@ MISSING_LABEL          = "—"
 def _geo_mean(probs: list[float]) -> float:
     if not probs:
         return 0.0
-    return math.exp(sum(math.log(max(p, 1e-10)) for p in probs) / len(probs))
+    result = math.exp(sum(math.log(max(p, 1e-10)) for p in probs) / len(probs))
+    return result if math.isfinite(result) else 0.0
 
 
 def compute_confidences(sequences: torch.Tensor, scores: tuple,
@@ -241,7 +242,7 @@ def parse_output(token_sequence: str) -> dict:
     outer = re.search(r"<s_order>(.*?)</s_order>", token_sequence, re.DOTALL)
     inner = outer.group(1) if outer else token_sequence
     for match in re.finditer(r"<s_(\w+)>(.*?)</s_\1>", inner, re.DOTALL):
-        result[match.group(1)] = match.group(2).strip()
+        result[match.group(1)] = " ".join(match.group(2).split())
     return result
 
 
@@ -269,7 +270,6 @@ def predict_single(image_path: str, model, processor, device,
             stopping_criteria=stop_criteria,
             num_beams=1,
             repetition_penalty=1.0,
-            no_repeat_ngram_size=4,
             output_scores=True,
             return_dict_in_generate=True,
         )
@@ -419,8 +419,8 @@ def evaluate(labels_file: str, img_dir: str, model, processor, device):
         result = predict_single(str(img_path), model, processor, device)
         parsed = result["parsed"]
 
-        pred = {f: parsed.get(f, "") for f in FIELDS}
-        gt   = {f: entry.get(f, "")  for f in FIELDS}
+        pred = {f: parsed.get(f, "")                    for f in FIELDS}
+        gt   = {f: " ".join(entry.get(f, "").split())   for f in FIELDS}
 
         # Nur Felder zählen die im Label tatsächlich befüllt sind.
         # Leeres GT + leere Pred würde sonst fälschlich als korrekt zählen.
