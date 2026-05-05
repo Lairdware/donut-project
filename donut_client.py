@@ -54,8 +54,12 @@ def extract_from_pdf(pdf_path: str, model_path: str = _DEFAULT_MODEL) -> pd.Data
         encoding="utf-8",
     )
 
-    if result.returncode != 0:
-        raise RuntimeError(f"Extraktion fehlgeschlagen:\n{result.stderr}")
+    if result.returncode != 0 or not result.stdout.strip():
+        raise RuntimeError(
+            f"Extraktion fehlgeschlagen (exit {result.returncode}):\n"
+            f"STDOUT: {result.stdout!r}\n"
+            f"STDERR: {result.stderr}"
+        )
 
     data = json.loads(result.stdout)
 
