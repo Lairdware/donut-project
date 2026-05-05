@@ -33,21 +33,29 @@ from transformers import (
 # ---------------------------------------------------------------------------
 # Konfiguration (muss mit train_donut.py übereinstimmen)
 # ---------------------------------------------------------------------------
-DEFAULT_MODEL      = "output/donut_orders/best_model"
-TASK_TOKEN         = "<s_order>"
-TASK_END_TOKEN     = "</s_order>"
-ORDER_NUM_TOKEN    = "<s_order_number>"
-ORDER_NUM_END      = "</s_order_number>"
-SOLD_TO_TOKEN      = "<s_sold_to_party_name>"
-SOLD_TO_END        = "</s_sold_to_party_name>"
+DEFAULT_MODEL          = "output/donut_orders/best_model"
+TASK_TOKEN             = "<s_order>"
+TASK_END_TOKEN         = "</s_order>"
+SOLD_TO_PARTY_TOKEN    = "<s_sold_to_party_name>"
+SOLD_TO_PARTY_END      = "</s_sold_to_party_name>"
+STREET_TOKEN           = "<s_sold_to_party_street>"
+STREET_END             = "</s_sold_to_party_street>"
+STREET_NUM_TOKEN       = "<s_sold_to_party_street_number>"
+STREET_NUM_END         = "</s_sold_to_party_street_number>"
+ZIP_TOKEN              = "<s_sold_to_party_zip>"
+ZIP_END                = "</s_sold_to_party_zip>"
+CITY_TOKEN             = "<s_sold_to_party_city>"
+CITY_END               = "</s_sold_to_party_city>"
+COUNTRY_TOKEN          = "<s_sold_to_party_country>"
+COUNTRY_END            = "</s_sold_to_party_country>"
 # ▼ NEUES FELD: Tokens hier definieren (muss mit train_donut.py übereinstimmen)
 # MEIN_FELD_TOKEN = "<s_mein_feld>"
 # MEIN_FELD_END   = "</s_mein_feld>"
-MAX_LENGTH         = 56   # etwas mehr Puffer für lange Beträge
-CONFIDENCE_HIGH    = 0.85
-CONFIDENCE_LOW     = 0.50
-IMAGE_EXTENSIONS   = {".png", ".jpg", ".jpeg", ".tiff", ".bmp", ".webp"}
-MISSING_LABEL      = "—"          # Anzeige wenn Feld im Dokument fehlt
+MAX_LENGTH             = 128
+CONFIDENCE_HIGH        = 0.85
+CONFIDENCE_LOW         = 0.50
+IMAGE_EXTENSIONS       = {".png", ".jpg", ".jpeg", ".tiff", ".bmp", ".webp"}
+MISSING_LABEL          = "—"
 
 
 # ---------------------------------------------------------------------------
@@ -65,8 +73,12 @@ def compute_confidences(sequences: torch.Tensor, scores: tuple,
 
     structural_ids = set(tok.convert_tokens_to_ids([
         TASK_TOKEN, TASK_END_TOKEN,
-        ORDER_NUM_TOKEN, ORDER_NUM_END,
-        SOLD_TO_TOKEN, SOLD_TO_END,
+        SOLD_TO_PARTY_TOKEN, SOLD_TO_PARTY_END,
+        STREET_TOKEN, STREET_END,
+        STREET_NUM_TOKEN, STREET_NUM_END,
+        ZIP_TOKEN, ZIP_END,
+        CITY_TOKEN, CITY_END,
+        COUNTRY_TOKEN, COUNTRY_END,
         # ▼ NEUES FELD: beide Tokens eintragen damit sie nicht als Inhalt gewertet werden
         # MEIN_FELD_TOKEN, MEIN_FELD_END,
     ]))
@@ -88,14 +100,22 @@ def compute_confidences(sequences: torch.Tensor, scores: tuple,
 
     # Feld-Konfidenzen
     field_start_map = {
-        tok.convert_tokens_to_ids(ORDER_NUM_TOKEN): "order_number",
-        tok.convert_tokens_to_ids(SOLD_TO_TOKEN):   "sold_to_party_name",
+        tok.convert_tokens_to_ids(SOLD_TO_PARTY_TOKEN): "sold_to_party_name",
+        tok.convert_tokens_to_ids(STREET_TOKEN):        "sold_to_party_street",
+        tok.convert_tokens_to_ids(STREET_NUM_TOKEN):    "sold_to_party_street_number",
+        tok.convert_tokens_to_ids(ZIP_TOKEN):           "sold_to_party_zip",
+        tok.convert_tokens_to_ids(CITY_TOKEN):          "sold_to_party_city",
+        tok.convert_tokens_to_ids(COUNTRY_TOKEN):       "sold_to_party_country",
         # ▼ NEUES FELD: Start-Token → Feldname (Key muss mit parse_output übereinstimmen)
         # tok.convert_tokens_to_ids(MEIN_FELD_TOKEN): "mein_feld",
     }
     field_end_ids = {
-        tok.convert_tokens_to_ids(ORDER_NUM_END),
-        tok.convert_tokens_to_ids(SOLD_TO_END),
+        tok.convert_tokens_to_ids(SOLD_TO_PARTY_END),
+        tok.convert_tokens_to_ids(STREET_END),
+        tok.convert_tokens_to_ids(STREET_NUM_END),
+        tok.convert_tokens_to_ids(ZIP_END),
+        tok.convert_tokens_to_ids(CITY_END),
+        tok.convert_tokens_to_ids(COUNTRY_END),
         tok.convert_tokens_to_ids(TASK_END_TOKEN),
         # ▼ NEUES FELD: End-Token eintragen
         # tok.convert_tokens_to_ids(MEIN_FELD_END),
@@ -119,7 +139,6 @@ def compute_confidences(sequences: torch.Tensor, scores: tuple,
         for field, probs in field_probs.items()
     }
 
-    # Dokument-Konfidenz
     skip_ids = structural_ids | {tok.eos_token_id, tok.pad_token_id}
     doc_conf = round(_geo_mean([
         item["prob"] for item in per_token if item["id"] not in skip_ids
@@ -143,7 +162,6 @@ def confidence_label(score: float) -> str:
 
 # ---------------------------------------------------------------------------
 # Stopping Criteria — stoppt sobald </s_order> generiert wurde.
-# Robuster als eos_token_id-Liste (API-stabil über alle transformers-Versionen)
 # ---------------------------------------------------------------------------
 class StopOnTaskEnd(StoppingCriteria):
     def __init__(self, task_end_token_id: int):
@@ -174,7 +192,6 @@ def load_model(model_path: str):
     processor = DonutProcessor.from_pretrained(model_path)
     model     = VisionEncoderDecoderModel.from_pretrained(model_path)
 
-    # Explizit setzen — in transformers 4.x und 5.x unterschiedlich gelesen
     decoder_start_id = processor.tokenizer.convert_tokens_to_ids([TASK_TOKEN])[0]
     model.config.decoder_start_token_id           = decoder_start_id
     model.generation_config.decoder_start_token_id = decoder_start_id
@@ -191,21 +208,10 @@ def load_model(model_path: str):
 # ---------------------------------------------------------------------------
 def parse_output(token_sequence: str) -> dict:
     result = {}
-
-    # Inhalt innerhalb <s_order>…</s_order> extrahieren, dann Feld-Tags suchen.
     outer = re.search(r"<s_order>(.*?)</s_order>", token_sequence, re.DOTALL)
     inner = outer.group(1) if outer else token_sequence
-
     for match in re.finditer(r"<s_(\w+)>(.*?)</s_\1>", inner, re.DOTALL):
         result[match.group(1)] = match.group(2).strip()
-
-    # Fallback Bestellnummer
-    if "order_number" not in result:
-        m = re.search(r"ORD-\d{4}-\d{5}", token_sequence)
-        if m:
-            result["order_number"] = m.group(0)
-            result["_fallback"] = True
-
     return result
 
 
@@ -218,7 +224,7 @@ def predict_single(image_path: str, model, processor, device,
         image = Image.open(image_path).convert("RGB")
     pixel_values = processor(image, return_tensors="pt").pixel_values.to(device)
 
-    task_end_id  = processor.tokenizer.convert_tokens_to_ids(TASK_END_TOKEN)
+    task_end_id   = processor.tokenizer.convert_tokens_to_ids(TASK_END_TOKEN)
     stop_criteria = StoppingCriteriaList([StopOnTaskEnd(task_end_id)])
 
     with torch.no_grad():
@@ -243,15 +249,15 @@ def predict_single(image_path: str, model, processor, device,
     )[0]
     seq_str = seq_str.replace(processor.tokenizer.eos_token, "")
     seq_str = seq_str.replace(processor.tokenizer.pad_token, "")
-    seq_str = re.sub(r"(<s_\w+>)\s+", r"\1", seq_str)  # BPE-Leerzeichen
+    seq_str = re.sub(r"(<s_\w+>)\s+", r"\1", seq_str)
 
     parsed     = parse_output(seq_str)
     confidence = compute_confidences(outputs.sequences, outputs.scores, processor)
 
     return {
-        "raw_output":   seq_str.strip(),
-        "parsed":       parsed,
-        "confidence":   confidence,
+        "raw_output": seq_str.strip(),
+        "parsed":     parsed,
+        "confidence": confidence,
     }
 
 
@@ -268,45 +274,56 @@ def process_directory(dir_path: str, model, processor, device) -> list:
         return []
 
     print(f"{len(images)} Bilder. Starte Inferenz ...\n")
-    hdr = f"{'#':<5} {'Datei':<28} {'Bestellnummer':<22} {'Sold-to Party':<30} {'Konf':>6}  Status"
+    hdr = f"{'#':<5} {'Datei':<28} {'Sold-to Party':<30} {'Stadt':<20} {'Land':<16} {'Konf':>6}  Status"
     print(hdr)
     print("-" * len(hdr))
 
     results = []
     for i, img_path in enumerate(images, 1):
-        t0     = time.time()
-        result = predict_single(str(img_path), model, processor, device)
+        t0      = time.time()
+        result  = predict_single(str(img_path), model, processor, device)
         elapsed = time.time() - t0
 
         parsed   = result["parsed"]
         doc_conf = result["confidence"]["document"]
         status   = confidence_label(doc_conf)
 
-        order_number  = parsed.get("order_number",      MISSING_LABEL)
-        sold_to       = parsed.get("sold_to_party_name", MISSING_LABEL)
+        sold_to    = parsed.get("sold_to_party_name",           MISSING_LABEL)
+        street     = parsed.get("sold_to_party_street",        MISSING_LABEL)
+        street_num = parsed.get("sold_to_party_street_number", MISSING_LABEL)
+        zip_code   = parsed.get("sold_to_party_zip",           MISSING_LABEL)
+        city       = parsed.get("sold_to_party_city",          MISSING_LABEL)
+        country    = parsed.get("sold_to_party_country",       MISSING_LABEL)
         # ▼ NEUES FELD: Wert aus parsed holen (Key = Feldname aus field_start_map)
         # mein_feld = parsed.get("mein_feld", MISSING_LABEL)
 
         print(
-            f"{i:<5} {img_path.name:<28} {order_number:<22} {sold_to:<30} "
+            f"{i:<5} {img_path.name:<28} {sold_to:<30} {city:<20} {country:<16} "
             f"{doc_conf:>5.1%}  [{status}]  ({elapsed:.2f}s)"
-            # ▼ NEUES FELD: Spalte zur Tabellenzeile hinzufügen
         )
         print(f"      RAW: {result['raw_output']}")
 
+        conf_fields = result["confidence"]["fields"]
         results.append({
-            "file":                         img_path.name,
-            "order_number":                 order_number,
-            "sold_to_party_name":           sold_to,
+            "file":                                img_path.name,
+            "sold_to_party_name":                  sold_to,
+            "sold_to_party_street":                street,
+            "sold_to_party_street_number":         street_num,
+            "sold_to_party_zip":                   zip_code,
+            "sold_to_party_city":                  city,
+            "sold_to_party_country":               country,
             # ▼ NEUES FELD: Wert und Konfidenz ins Ergebnis-Dict eintragen
-            # "mein_feld":                  mein_feld,
-            # "confidence_mein_feld":       result["confidence"]["fields"].get("mein_feld", 0.0),
-            "confidence_document":          doc_conf,
-            "confidence_order_number":      result["confidence"]["fields"].get("order_number", 0.0),
-            "confidence_sold_to_party_name": result["confidence"]["fields"].get("sold_to_party_name", 0.0),
-            "confidence_label":             status,
-            "raw_output":                   result["raw_output"],
-            "time_s":                       round(elapsed, 3),
+            # "mein_feld":                         mein_feld,
+            # "confidence_mein_feld":              conf_fields.get("mein_feld", 0.0),
+            "confidence_document":                 doc_conf,
+            "confidence_sold_to_party_name":       conf_fields.get("sold_to_party_name", 0.0),
+            "confidence_sold_to_party_street":     conf_fields.get("sold_to_party_street", 0.0),
+            "confidence_sold_to_party_zip":        conf_fields.get("sold_to_party_zip", 0.0),
+            "confidence_sold_to_party_city":       conf_fields.get("sold_to_party_city", 0.0),
+            "confidence_sold_to_party_country":    conf_fields.get("sold_to_party_country", 0.0),
+            "confidence_label":                    status,
+            "raw_output":                          result["raw_output"],
+            "time_s":                              round(elapsed, 3),
         })
 
     return results
@@ -319,12 +336,19 @@ def evaluate(labels_file: str, img_dir: str, model, processor, device):
     with open(labels_file, encoding="utf-8") as f:
         labels = [json.loads(l) for l in f if l.strip()]
 
-    correct_order = correct_sold_to = correct_both = n = 0
+    FIELDS = [
+        "sold_to_party_name",
+        "sold_to_party_street",
+        "sold_to_party_street_number",
+        "sold_to_party_zip",
+        "sold_to_party_city",
+        "sold_to_party_country",
+    ]
+    correct = {f: 0 for f in FIELDS}
+    correct_all = 0
+    n = 0
 
     print(f"{len(labels)} Labels. Starte Evaluation ...\n")
-    hdr = f"{'Datei':<28} {'Pred-Nr':<22} {'GT-Nr':<22} {'Pred-Sold-to':<30} {'GT-Sold-to':<30}  OK?"
-    print(hdr)
-    print("-" * len(hdr))
 
     for entry in labels:
         img_name = entry.get("image") or entry.get("file_name", "")
@@ -336,33 +360,31 @@ def evaluate(labels_file: str, img_dir: str, model, processor, device):
         result = predict_single(str(img_path), model, processor, device)
         parsed = result["parsed"]
 
-        pred_nr      = parsed.get("order_number",      "")
-        pred_sold_to = parsed.get("sold_to_party_name", "")
-        gt_nr        = entry.get("order_number",       "")
-        gt_sold_to   = entry.get("sold_to_party_name", "")
+        pred = {f: parsed.get(f, "") for f in FIELDS}
+        gt   = {f: entry.get(f, "")  for f in FIELDS}
+        ok   = {f: pred[f] == gt[f]  for f in FIELDS}
 
-        ok_nr      = pred_nr      == gt_nr
-        ok_sold_to = pred_sold_to == gt_sold_to
-        ok_both    = ok_nr and ok_sold_to
-
-        if ok_nr:      correct_order   += 1
-        if ok_sold_to: correct_sold_to += 1
-        if ok_both:    correct_both    += 1
+        for f in FIELDS:
+            if ok[f]:
+                correct[f] += 1
+        if all(ok.values()):
+            correct_all += 1
         n += 1
 
-        status = "✓" if ok_both else ("~" if (ok_nr or ok_sold_to) else "✗")
-        print(
-            f"{img_name:<28} {pred_nr or MISSING_LABEL:<22} {gt_nr or MISSING_LABEL:<22} "
-            f"{pred_sold_to or MISSING_LABEL:<30} {gt_sold_to or MISSING_LABEL:<30}  {status}"
-        )
-        print(f"  RAW: {result['raw_output']}")
+        status = "✓" if all(ok.values()) else ("~" if any(ok.values()) else "✗")
+        print(f"  {status}  {img_name}")
+        print(f"      Name  : pred={pred['sold_to_party_name'] or MISSING_LABEL}  gt={gt['sold_to_party_name'] or MISSING_LABEL}")
+        print(f"      Straße: pred={pred['sold_to_party_street'] or MISSING_LABEL} {pred['sold_to_party_street_number'] or MISSING_LABEL}  gt={gt['sold_to_party_street'] or MISSING_LABEL} {gt['sold_to_party_street_number'] or MISSING_LABEL}")
+        print(f"      PLZ/Ort: pred={pred['sold_to_party_zip'] or MISSING_LABEL} {pred['sold_to_party_city'] or MISSING_LABEL}  gt={gt['sold_to_party_zip'] or MISSING_LABEL} {gt['sold_to_party_city'] or MISSING_LABEL}")
+        print(f"      Land  : pred={pred['sold_to_party_country'] or MISSING_LABEL}  gt={gt['sold_to_party_country'] or MISSING_LABEL}")
+        print(f"      RAW: {result['raw_output']}\n")
 
     if n:
-        print(f"\n{'='*60}")
-        print(f"  Bestellnummer korrekt   : {correct_order}/{n}  ({correct_order/n:.1%})")
-        print(f"  Sold-to Party korrekt   : {correct_sold_to}/{n}  ({correct_sold_to/n:.1%})")
-        print(f"  Beide korrekt           : {correct_both}/{n}  ({correct_both/n:.1%})")
-        print(f"{'='*60}")
+        print(f"{'='*55}")
+        for f in FIELDS:
+            print(f"  {f:<40}: {correct[f]}/{n}  ({correct[f]/n:.1%})")
+        print(f"  {'Alle korrekt':<40}: {correct_all}/{n}  ({correct_all/n:.1%})")
+        print(f"{'='*55}")
 
 
 # ---------------------------------------------------------------------------
@@ -404,20 +426,21 @@ def main():
             result = predict_single(src, model, processor, device)
         elapsed = time.time() - t0
 
-        parsed   = result["parsed"]
-        conf     = result["confidence"]
-        doc_lbl  = confidence_label(conf["document"])
+        parsed  = result["parsed"]
+        conf    = result["confidence"]
+        doc_lbl = confidence_label(conf["document"])
 
         print("\n" + "=" * 55)
-        print(f"  Bestellnummer      : {parsed.get('order_number',       MISSING_LABEL)}")
-        print(f"  Sold-to Party      : {parsed.get('sold_to_party_name', MISSING_LABEL)}")
+        print(f"  Sold-to Party      : {parsed.get('sold_to_party_name',          MISSING_LABEL)}")
+        print(f"  Straße             : {parsed.get('sold_to_party_street',        MISSING_LABEL)} {parsed.get('sold_to_party_street_number', '')}")
+        print(f"  PLZ / Ort          : {parsed.get('sold_to_party_zip',           MISSING_LABEL)} {parsed.get('sold_to_party_city', '')}")
+        print(f"  Land               : {parsed.get('sold_to_party_country',       MISSING_LABEL)}")
         # ▼ NEUES FELD: Ausgabe für --image / --pdf Modus
         # print(f"  Mein Feld          : {parsed.get('mein_feld', MISSING_LABEL)}")
         print(f"  Rohausgabe         : {result['raw_output']}")
         print(f"  Dok-Konfidenz      : {conf['document']:.1%}  [{doc_lbl}]")
         for field, fc in conf["fields"].items():
-            name = "Bestellnummer" if field == "order_number" else "Sold-to Party"
-            print(f"  Feld '{name}'  : {fc:.1%}  [{confidence_label(fc)}]")
+            print(f"  Feld '{field}'  : {fc:.1%}  [{confidence_label(fc)}]")
         print(f"  Dauer              : {elapsed:.3f}s")
 
         if args.show_tokens:
@@ -436,7 +459,7 @@ def main():
         results = process_directory(args.dir, model, processor, device)
 
         if results:
-            found    = sum(1 for r in results if r["order_number"] != MISSING_LABEL)
+            found    = sum(1 for r in results if r["sold_to_party_name"] != MISSING_LABEL)
             high     = sum(1 for r in results if r["confidence_label"] == "HIGH")
             med      = sum(1 for r in results if r["confidence_label"] == "MED")
             low      = sum(1 for r in results if r["confidence_label"] == "LOW")

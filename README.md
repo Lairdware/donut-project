@@ -65,8 +65,8 @@ Ausgabe: `dataset/images/<name>_p0.png` (Seite 1), `_p1.png` (Seite 2), ...
 `dataset/labels.jsonl` manuell befüllen oder ergänzen. Ein Eintrag pro Zeile:
 
 ```jsonl
-{"image": "rechnung_001_p0.png", "order_number": "ORD-2024-00001", "sold_to_party_name": "Siemens AG"}
-{"image": "rechnung_002_p0.png", "order_number": "", "sold_to_party_name": "KYOCERA AVX Components s.r.o."}
+{"image": "rechnung_001_p0.png", "sold_to_party_name": "Siemens AG", "sold_to_party_street": "Wittelsbacherplatz", "sold_to_party_street_number": "2", "sold_to_party_zip": "80333", "sold_to_party_city": "München", "sold_to_party_country": "Deutschland"}
+{"image": "rechnung_002_p0.png", "sold_to_party_name": "KYOCERA AVX Components s.r.o.", "sold_to_party_street": "Masarykova", "sold_to_party_street_number": "1", "sold_to_party_zip": "678 01", "sold_to_party_city": "Blansko", "sold_to_party_country": "Czech Republic"}
 ```
 
 - Felder dürfen leer sein (`""`) — das Modell lernt dann, sie wegzulassen
@@ -204,5 +204,6 @@ Außerdem `dataset/labels.jsonl` um das neue Feld ergänzen und `prepare_dataset
 | Feld nie gefunden | Altes Modell geladen | `output/donut_orders/` löschen, neu trainieren |
 | Feld immer leer | JSONL hat leere Werte | `prepare_dataset.py` prüfen |
 | Punktuation falsch (`s.r.o,`) | `repetition_penalty` zu hoch | `repetition_penalty=1.0` in `inference_donut.py` |
-| Firmenname doppelt ausgegeben | Modell wiederholt Sequenz | `no_repeat_ngram_size=4` in `inference_donut.py` |
+| Name doppelt ausgegeben | Modell wiederholt Sequenz | `no_repeat_ngram_size=4` in `inference_donut.py` |
 | 100% Val-Acc, 0 Treffer | Feld in Trainings-JSONL leer | Labels prüfen, `prepare_dataset.py` neu ausführen |
+| Sequenz abgeschnitten | `MAX_LENGTH` zu klein | Wert in `train_donut.py` + `inference_donut.py` erhöhen |

@@ -1,6 +1,6 @@
 """
-Donut Trainings-Script — extrahiert Bestellnummer + Gesamtbetrag
-aus Bestellungs-Dokumenten. Unterstützt Dokumente mit fehlenden Feldern.
+Donut Trainings-Script — extrahiert Adressfelder aus Dokumenten.
+Unterstützt Dokumente mit fehlenden Feldern.
 
 Voraussetzungen:
     pip install "torch>=2.6.0" torchvision --index-url https://download.pytorch.org/whl/cu124
@@ -32,23 +32,35 @@ TRAIN_DIR         = Path("data/train")
 VAL_DIR           = Path("data/val")
 OUTPUT_DIR        = Path("output/donut_orders")
 
-TASK_TOKEN        = "<s_order>"
-TASK_END_TOKEN    = "</s_order>"
-ORDER_NUM_TOKEN   = "<s_order_number>"
-ORDER_NUM_END     = "</s_order_number>"
-SOLD_TO_TOKEN     = "<s_sold_to_party_name>"
-SOLD_TO_END       = "</s_sold_to_party_name>"
+TASK_TOKEN             = "<s_order>"
+TASK_END_TOKEN         = "</s_order>"
+SOLD_TO_PARTY_TOKEN    = "<s_sold_to_party_name>"
+SOLD_TO_PARTY_END      = "</s_sold_to_party_name>"
+STREET_TOKEN           = "<s_sold_to_party_street>"
+STREET_END             = "</s_sold_to_party_street>"
+STREET_NUM_TOKEN       = "<s_sold_to_party_street_number>"
+STREET_NUM_END         = "</s_sold_to_party_street_number>"
+ZIP_TOKEN              = "<s_sold_to_party_zip>"
+ZIP_END                = "</s_sold_to_party_zip>"
+CITY_TOKEN             = "<s_sold_to_party_city>"
+CITY_END               = "</s_sold_to_party_city>"
+COUNTRY_TOKEN          = "<s_sold_to_party_country>"
+COUNTRY_END            = "</s_sold_to_party_country>"
 # ▼ NEUES FELD: Tokens hier definieren (Schema: "<s_feldname>" / "</s_feldname>")
 # MEIN_FELD_TOKEN = "<s_mein_feld>"
 # MEIN_FELD_END   = "</s_mein_feld>"
 
 # Zielformat (Labels, <s_order> wird automatisch vorne eingefügt):
-#   beide Felder : <s_order_number>ORD-…</s_order_number><s_sold_to_party_name>…</s_sold_to_party_name></s_order>
-#   nur Nummer   : <s_order_number>ORD-…</s_order_number></s_order>
-#   nur Name     : <s_sold_to_party_name>…</s_sold_to_party_name></s_order>
+#   <s_sold_to_party_name>…</s_sold_to_party_name>
+#   <s_sold_to_party_street>…</s_sold_to_party_street>
+#   <s_sold_to_party_street_number>…</s_sold_to_party_street_number>
+#   <s_sold_to_party_zip>…</s_sold_to_party_zip>
+#   <s_sold_to_party_city>…</s_sold_to_party_city>
+#   <s_sold_to_party_country>…</s_sold_to_party_country>
+#   </s_order>
 
 IMAGE_SIZE        = (1280, 960)
-MAX_LENGTH        = 56
+MAX_LENGTH        = 128
 BATCH_SIZE        = 4   # 1280×960 braucht mehr VRAM
 NUM_EPOCHS        = 50
 LEARNING_RATE     = 3e-5
@@ -82,19 +94,31 @@ class OrderDataset(Dataset):
         img_path = self.data_dir / sample["file_name"]
         image    = Image.open(img_path).convert("RGB")
 
-        gt           = json.loads(sample["ground_truth"])
-        order_number = gt["gt_parse"].get("order_number", "")
-        sold_to      = gt["gt_parse"].get("sold_to_party_name", "")
+        gt          = json.loads(sample["ground_truth"])
+        sold_to     = gt["gt_parse"].get("sold_to_party_name", "")
+        street      = gt["gt_parse"].get("sold_to_party_street", "")
+        street_num  = gt["gt_parse"].get("sold_to_party_street_number", "")
+        zip_code    = gt["gt_parse"].get("sold_to_party_zip", "")
+        city        = gt["gt_parse"].get("sold_to_party_city", "")
+        country     = gt["gt_parse"].get("sold_to_party_country", "")
         # ▼ NEUES FELD: Wert aus gt_parse lesen (Key = Feldname in der JSONL)
         # mein_feld = gt["gt_parse"].get("mein_feld", "")
 
         # Fehlende Felder → Tag weglassen.
         # Modell lernt: kein Tag im Output = Feld nicht im Dokument.
         parts = ""
-        if order_number:
-            parts += f"{ORDER_NUM_TOKEN}{order_number}{ORDER_NUM_END}"
         if sold_to:
-            parts += f"{SOLD_TO_TOKEN}{sold_to}{SOLD_TO_END}"
+            parts += f"{SOLD_TO_PARTY_TOKEN}{sold_to}{SOLD_TO_PARTY_END}"
+        if street:
+            parts += f"{STREET_TOKEN}{street}{STREET_END}"
+        if street_num:
+            parts += f"{STREET_NUM_TOKEN}{street_num}{STREET_NUM_END}"
+        if zip_code:
+            parts += f"{ZIP_TOKEN}{zip_code}{ZIP_END}"
+        if city:
+            parts += f"{CITY_TOKEN}{city}{CITY_END}"
+        if country:
+            parts += f"{COUNTRY_TOKEN}{country}{COUNTRY_END}"
         # ▼ NEUES FELD: Sequenz-Block anhängen
         # if mein_feld:
         #     parts += f"{MEIN_FELD_TOKEN}{mein_feld}{MEIN_FELD_END}"
@@ -126,8 +150,12 @@ def setup_model_and_processor():
 
     processor.tokenizer.add_special_tokens({"additional_special_tokens": [
         TASK_TOKEN, TASK_END_TOKEN,
-        ORDER_NUM_TOKEN, ORDER_NUM_END,
-        SOLD_TO_TOKEN, SOLD_TO_END,
+        SOLD_TO_PARTY_TOKEN, SOLD_TO_PARTY_END,
+        STREET_TOKEN, STREET_END,
+        STREET_NUM_TOKEN, STREET_NUM_END,
+        ZIP_TOKEN, ZIP_END,
+        CITY_TOKEN, CITY_END,
+        COUNTRY_TOKEN, COUNTRY_END,
         # ▼ NEUES FELD: beide Tokens hier eintragen
         # MEIN_FELD_TOKEN, MEIN_FELD_END,
     ]})
