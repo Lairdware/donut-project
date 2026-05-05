@@ -34,8 +34,8 @@ OUTPUT_DIR        = Path("output/donut_orders")
 
 TASK_TOKEN             = "<s_order>"
 TASK_END_TOKEN         = "</s_order>"
-SOLD_TO_PARTY_TOKEN    = "<s_sold_to_party_name>"
-SOLD_TO_PARTY_END      = "</s_sold_to_party_name>"
+NAME_TOKEN    = "<s_sold_to_party_name>"
+NAME_END      = "</s_sold_to_party_name>"
 STREET_TOKEN           = "<s_sold_to_party_street>"
 STREET_END             = "</s_sold_to_party_street>"
 STREET_NUM_TOKEN       = "<s_sold_to_party_street_number>"
@@ -108,7 +108,7 @@ class OrderDataset(Dataset):
         # Modell lernt: kein Tag im Output = Feld nicht im Dokument.
         parts = ""
         if sold_to:
-            parts += f"{SOLD_TO_PARTY_TOKEN}{sold_to}{SOLD_TO_PARTY_END}"
+            parts += f"{NAME_TOKEN}{sold_to}{NAME_END}"
         if street:
             parts += f"{STREET_TOKEN}{street}{STREET_END}"
         if street_num:
@@ -150,7 +150,7 @@ def setup_model_and_processor():
 
     processor.tokenizer.add_special_tokens({"additional_special_tokens": [
         TASK_TOKEN, TASK_END_TOKEN,
-        SOLD_TO_PARTY_TOKEN, SOLD_TO_PARTY_END,
+        NAME_TOKEN, NAME_END,
         STREET_TOKEN, STREET_END,
         STREET_NUM_TOKEN, STREET_NUM_END,
         ZIP_TOKEN, ZIP_END,
@@ -326,6 +326,9 @@ def train():
 
                     if normalize(pred) == normalize(gt):
                         correct += 1
+                    elif epoch >= 40:
+                        print(f"  [MISMATCH] PRED: {normalize(pred)}")
+                        print(f"  [MISMATCH]   GT: {normalize(gt)}")
                     n_total += 1
 
         avg_val_loss = val_loss / len(val_loader)
