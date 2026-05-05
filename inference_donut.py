@@ -36,8 +36,8 @@ from transformers import (
 DEFAULT_MODEL          = "output/donut_orders/best_model"
 TASK_TOKEN             = "<s_order>"
 TASK_END_TOKEN         = "</s_order>"
-NAME_TOKEN    = "<s_sold_to_party_name>"
-NAME_END      = "</s_sold_to_party_name>"
+NAME_TOKEN             = "<s_sold_to_party_name>"
+NAME_END               = "</s_sold_to_party_name>"
 STREET_TOKEN           = "<s_sold_to_party_street>"
 STREET_END             = "</s_sold_to_party_street>"
 STREET_NUM_TOKEN       = "<s_sold_to_party_street_number>"
@@ -48,10 +48,22 @@ CITY_TOKEN             = "<s_sold_to_party_city>"
 CITY_END               = "</s_sold_to_party_city>"
 COUNTRY_TOKEN          = "<s_sold_to_party_country>"
 COUNTRY_END            = "</s_sold_to_party_country>"
+SHIP_NAME_TOKEN        = "<s_ship_to_party_name>"
+SHIP_NAME_END          = "</s_ship_to_party_name>"
+SHIP_STREET_TOKEN      = "<s_ship_to_party_street>"
+SHIP_STREET_END        = "</s_ship_to_party_street>"
+SHIP_STREET_NUM_TOKEN  = "<s_ship_to_party_street_number>"
+SHIP_STREET_NUM_END    = "</s_ship_to_party_street_number>"
+SHIP_ZIP_TOKEN         = "<s_ship_to_party_zip>"
+SHIP_ZIP_END           = "</s_ship_to_party_zip>"
+SHIP_CITY_TOKEN        = "<s_ship_to_party_city>"
+SHIP_CITY_END          = "</s_ship_to_party_city>"
+SHIP_COUNTRY_TOKEN     = "<s_ship_to_party_country>"
+SHIP_COUNTRY_END       = "</s_ship_to_party_country>"
 # ▼ NEUES FELD: Tokens hier definieren (muss mit train_donut.py übereinstimmen)
 # MEIN_FELD_TOKEN = "<s_mein_feld>"
 # MEIN_FELD_END   = "</s_mein_feld>"
-MAX_LENGTH             = 128
+MAX_LENGTH             = 192
 CONFIDENCE_HIGH        = 0.85
 CONFIDENCE_LOW         = 0.50
 IMAGE_EXTENSIONS       = {".png", ".jpg", ".jpeg", ".tiff", ".bmp", ".webp"}
@@ -79,6 +91,12 @@ def compute_confidences(sequences: torch.Tensor, scores: tuple,
         ZIP_TOKEN, ZIP_END,
         CITY_TOKEN, CITY_END,
         COUNTRY_TOKEN, COUNTRY_END,
+        SHIP_NAME_TOKEN, SHIP_NAME_END,
+        SHIP_STREET_TOKEN, SHIP_STREET_END,
+        SHIP_STREET_NUM_TOKEN, SHIP_STREET_NUM_END,
+        SHIP_ZIP_TOKEN, SHIP_ZIP_END,
+        SHIP_CITY_TOKEN, SHIP_CITY_END,
+        SHIP_COUNTRY_TOKEN, SHIP_COUNTRY_END,
         # ▼ NEUES FELD: beide Tokens eintragen damit sie nicht als Inhalt gewertet werden
         # MEIN_FELD_TOKEN, MEIN_FELD_END,
     ]))
@@ -100,12 +118,18 @@ def compute_confidences(sequences: torch.Tensor, scores: tuple,
 
     # Feld-Konfidenzen
     field_start_map = {
-        tok.convert_tokens_to_ids(NAME_TOKEN): "sold_to_party_name",
-        tok.convert_tokens_to_ids(STREET_TOKEN):        "sold_to_party_street",
-        tok.convert_tokens_to_ids(STREET_NUM_TOKEN):    "sold_to_party_street_number",
-        tok.convert_tokens_to_ids(ZIP_TOKEN):           "sold_to_party_zip",
-        tok.convert_tokens_to_ids(CITY_TOKEN):          "sold_to_party_city",
-        tok.convert_tokens_to_ids(COUNTRY_TOKEN):       "sold_to_party_country",
+        tok.convert_tokens_to_ids(NAME_TOKEN):            "sold_to_party_name",
+        tok.convert_tokens_to_ids(STREET_TOKEN):          "sold_to_party_street",
+        tok.convert_tokens_to_ids(STREET_NUM_TOKEN):      "sold_to_party_street_number",
+        tok.convert_tokens_to_ids(ZIP_TOKEN):             "sold_to_party_zip",
+        tok.convert_tokens_to_ids(CITY_TOKEN):            "sold_to_party_city",
+        tok.convert_tokens_to_ids(COUNTRY_TOKEN):         "sold_to_party_country",
+        tok.convert_tokens_to_ids(SHIP_NAME_TOKEN):       "ship_to_party_name",
+        tok.convert_tokens_to_ids(SHIP_STREET_TOKEN):     "ship_to_party_street",
+        tok.convert_tokens_to_ids(SHIP_STREET_NUM_TOKEN): "ship_to_party_street_number",
+        tok.convert_tokens_to_ids(SHIP_ZIP_TOKEN):        "ship_to_party_zip",
+        tok.convert_tokens_to_ids(SHIP_CITY_TOKEN):       "ship_to_party_city",
+        tok.convert_tokens_to_ids(SHIP_COUNTRY_TOKEN):    "ship_to_party_country",
         # ▼ NEUES FELD: Start-Token → Feldname (Key muss mit parse_output übereinstimmen)
         # tok.convert_tokens_to_ids(MEIN_FELD_TOKEN): "mein_feld",
     }
@@ -116,6 +140,12 @@ def compute_confidences(sequences: torch.Tensor, scores: tuple,
         tok.convert_tokens_to_ids(ZIP_END),
         tok.convert_tokens_to_ids(CITY_END),
         tok.convert_tokens_to_ids(COUNTRY_END),
+        tok.convert_tokens_to_ids(SHIP_NAME_END),
+        tok.convert_tokens_to_ids(SHIP_STREET_END),
+        tok.convert_tokens_to_ids(SHIP_STREET_NUM_END),
+        tok.convert_tokens_to_ids(SHIP_ZIP_END),
+        tok.convert_tokens_to_ids(SHIP_CITY_END),
+        tok.convert_tokens_to_ids(SHIP_COUNTRY_END),
         tok.convert_tokens_to_ids(TASK_END_TOKEN),
         # ▼ NEUES FELD: End-Token eintragen
         # tok.convert_tokens_to_ids(MEIN_FELD_END),
@@ -288,12 +318,18 @@ def process_directory(dir_path: str, model, processor, device) -> list:
         doc_conf = result["confidence"]["document"]
         status   = confidence_label(doc_conf)
 
-        sold_to    = parsed.get("sold_to_party_name",           MISSING_LABEL)
-        street     = parsed.get("sold_to_party_street",        MISSING_LABEL)
-        street_num = parsed.get("sold_to_party_street_number", MISSING_LABEL)
-        zip_code   = parsed.get("sold_to_party_zip",           MISSING_LABEL)
-        city       = parsed.get("sold_to_party_city",          MISSING_LABEL)
-        country    = parsed.get("sold_to_party_country",       MISSING_LABEL)
+        sold_to    = parsed.get("sold_to_party_name",               MISSING_LABEL)
+        street     = parsed.get("sold_to_party_street",            MISSING_LABEL)
+        street_num = parsed.get("sold_to_party_street_number",     MISSING_LABEL)
+        zip_code   = parsed.get("sold_to_party_zip",               MISSING_LABEL)
+        city       = parsed.get("sold_to_party_city",              MISSING_LABEL)
+        country    = parsed.get("sold_to_party_country",           MISSING_LABEL)
+        ship_name  = parsed.get("ship_to_party_name",              MISSING_LABEL)
+        ship_str   = parsed.get("ship_to_party_street",            MISSING_LABEL)
+        ship_num   = parsed.get("ship_to_party_street_number",     MISSING_LABEL)
+        ship_zip   = parsed.get("ship_to_party_zip",               MISSING_LABEL)
+        ship_city  = parsed.get("ship_to_party_city",              MISSING_LABEL)
+        ship_cnt   = parsed.get("ship_to_party_country",           MISSING_LABEL)
         # ▼ NEUES FELD: Wert aus parsed holen (Key = Feldname aus field_start_map)
         # mein_feld = parsed.get("mein_feld", MISSING_LABEL)
 
@@ -305,25 +341,28 @@ def process_directory(dir_path: str, model, processor, device) -> list:
 
         conf_fields = result["confidence"]["fields"]
         results.append({
-            "file":                                img_path.name,
-            "sold_to_party_name":                  sold_to,
-            "sold_to_party_street":                street,
-            "sold_to_party_street_number":         street_num,
-            "sold_to_party_zip":                   zip_code,
-            "sold_to_party_city":                  city,
-            "sold_to_party_country":               country,
+            "file":                                    img_path.name,
+            "sold_to_party_name":                      sold_to,
+            "sold_to_party_street":                    street,
+            "sold_to_party_street_number":             street_num,
+            "sold_to_party_zip":                       zip_code,
+            "sold_to_party_city":                      city,
+            "sold_to_party_country":                   country,
+            "ship_to_party_name":                      ship_name,
+            "ship_to_party_street":                    ship_str,
+            "ship_to_party_street_number":             ship_num,
+            "ship_to_party_zip":                       ship_zip,
+            "ship_to_party_city":                      ship_city,
+            "ship_to_party_country":                   ship_cnt,
             # ▼ NEUES FELD: Wert und Konfidenz ins Ergebnis-Dict eintragen
-            # "mein_feld":                         mein_feld,
-            # "confidence_mein_feld":              conf_fields.get("mein_feld", 0.0),
-            "confidence_document":                 doc_conf,
-            "confidence_sold_to_party_name":       conf_fields.get("sold_to_party_name", 0.0),
-            "confidence_sold_to_party_street":     conf_fields.get("sold_to_party_street", 0.0),
-            "confidence_sold_to_party_zip":        conf_fields.get("sold_to_party_zip", 0.0),
-            "confidence_sold_to_party_city":       conf_fields.get("sold_to_party_city", 0.0),
-            "confidence_sold_to_party_country":    conf_fields.get("sold_to_party_country", 0.0),
-            "confidence_label":                    status,
-            "raw_output":                          result["raw_output"],
-            "time_s":                              round(elapsed, 3),
+            # "mein_feld":                             mein_feld,
+            # "confidence_mein_feld":                  conf_fields.get("mein_feld", 0.0),
+            "confidence_document":                     doc_conf,
+            "confidence_sold_to_party_name":           conf_fields.get("sold_to_party_name", 0.0),
+            "confidence_ship_to_party_name":           conf_fields.get("ship_to_party_name", 0.0),
+            "confidence_label":                        status,
+            "raw_output":                              result["raw_output"],
+            "time_s":                                  round(elapsed, 3),
         })
 
     return results
@@ -356,6 +395,12 @@ def evaluate(labels_file: str, img_dir: str, model, processor, device):
         "sold_to_party_zip",
         "sold_to_party_city",
         "sold_to_party_country",
+        "ship_to_party_name",
+        "ship_to_party_street",
+        "ship_to_party_street_number",
+        "ship_to_party_zip",
+        "ship_to_party_city",
+        "ship_to_party_country",
     ]
     # correct[f] = (richtig, gesamt) — nur Einträge wo GT nicht leer ist
     correct = {f: [0, 0] for f in FIELDS}
@@ -454,10 +499,16 @@ def main():
         doc_lbl = confidence_label(conf["document"])
 
         print("\n" + "=" * 55)
-        print(f"  Sold-to Party      : {parsed.get('sold_to_party_name',          MISSING_LABEL)}")
-        print(f"  Straße             : {parsed.get('sold_to_party_street',        MISSING_LABEL)} {parsed.get('sold_to_party_street_number', '')}")
-        print(f"  PLZ / Ort          : {parsed.get('sold_to_party_zip',           MISSING_LABEL)} {parsed.get('sold_to_party_city', '')}")
-        print(f"  Land               : {parsed.get('sold_to_party_country',       MISSING_LABEL)}")
+        print(f"  [Sold-to Party]")
+        print(f"  Name               : {parsed.get('sold_to_party_name',              MISSING_LABEL)}")
+        print(f"  Straße             : {parsed.get('sold_to_party_street',            MISSING_LABEL)} {parsed.get('sold_to_party_street_number', '')}")
+        print(f"  PLZ / Ort          : {parsed.get('sold_to_party_zip',               MISSING_LABEL)} {parsed.get('sold_to_party_city', '')}")
+        print(f"  Land               : {parsed.get('sold_to_party_country',           MISSING_LABEL)}")
+        print(f"  [Ship-to Party]")
+        print(f"  Name               : {parsed.get('ship_to_party_name',              MISSING_LABEL)}")
+        print(f"  Straße             : {parsed.get('ship_to_party_street',            MISSING_LABEL)} {parsed.get('ship_to_party_street_number', '')}")
+        print(f"  PLZ / Ort          : {parsed.get('ship_to_party_zip',               MISSING_LABEL)} {parsed.get('ship_to_party_city', '')}")
+        print(f"  Land               : {parsed.get('ship_to_party_country',           MISSING_LABEL)}")
         # ▼ NEUES FELD: Ausgabe für --image / --pdf Modus
         # print(f"  Mein Feld          : {parsed.get('mein_feld', MISSING_LABEL)}")
         print(f"  Rohausgabe         : {result['raw_output']}")

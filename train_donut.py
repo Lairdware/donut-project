@@ -46,21 +46,24 @@ CITY_TOKEN             = "<s_sold_to_party_city>"
 CITY_END               = "</s_sold_to_party_city>"
 COUNTRY_TOKEN          = "<s_sold_to_party_country>"
 COUNTRY_END            = "</s_sold_to_party_country>"
+SHIP_NAME_TOKEN        = "<s_ship_to_party_name>"
+SHIP_NAME_END          = "</s_ship_to_party_name>"
+SHIP_STREET_TOKEN      = "<s_ship_to_party_street>"
+SHIP_STREET_END        = "</s_ship_to_party_street>"
+SHIP_STREET_NUM_TOKEN  = "<s_ship_to_party_street_number>"
+SHIP_STREET_NUM_END    = "</s_ship_to_party_street_number>"
+SHIP_ZIP_TOKEN         = "<s_ship_to_party_zip>"
+SHIP_ZIP_END           = "</s_ship_to_party_zip>"
+SHIP_CITY_TOKEN        = "<s_ship_to_party_city>"
+SHIP_CITY_END          = "</s_ship_to_party_city>"
+SHIP_COUNTRY_TOKEN     = "<s_ship_to_party_country>"
+SHIP_COUNTRY_END       = "</s_ship_to_party_country>"
 # ▼ NEUES FELD: Tokens hier definieren (Schema: "<s_feldname>" / "</s_feldname>")
 # MEIN_FELD_TOKEN = "<s_mein_feld>"
 # MEIN_FELD_END   = "</s_mein_feld>"
 
-# Zielformat (Labels, <s_order> wird automatisch vorne eingefügt):
-#   <s_sold_to_party_name>…</s_sold_to_party_name>
-#   <s_sold_to_party_street>…</s_sold_to_party_street>
-#   <s_sold_to_party_street_number>…</s_sold_to_party_street_number>
-#   <s_sold_to_party_zip>…</s_sold_to_party_zip>
-#   <s_sold_to_party_city>…</s_sold_to_party_city>
-#   <s_sold_to_party_country>…</s_sold_to_party_country>
-#   </s_order>
-
 IMAGE_SIZE        = (1280, 960)
-MAX_LENGTH        = 128
+MAX_LENGTH        = 192
 BATCH_SIZE        = 4   # 1280×960 braucht mehr VRAM
 NUM_EPOCHS        = 50
 LEARNING_RATE     = 3e-5
@@ -95,30 +98,37 @@ class OrderDataset(Dataset):
         image    = Image.open(img_path).convert("RGB")
 
         gt          = json.loads(sample["ground_truth"])
-        sold_to     = gt["gt_parse"].get("sold_to_party_name", "")
-        street      = gt["gt_parse"].get("sold_to_party_street", "")
-        street_num  = gt["gt_parse"].get("sold_to_party_street_number", "")
-        zip_code    = gt["gt_parse"].get("sold_to_party_zip", "")
-        city        = gt["gt_parse"].get("sold_to_party_city", "")
-        country     = gt["gt_parse"].get("sold_to_party_country", "")
+        p          = gt["gt_parse"]
+        sold_to    = p.get("sold_to_party_name", "")
+        street     = p.get("sold_to_party_street", "")
+        street_num = p.get("sold_to_party_street_number", "")
+        zip_code   = p.get("sold_to_party_zip", "")
+        city       = p.get("sold_to_party_city", "")
+        country    = p.get("sold_to_party_country", "")
+        ship_name  = p.get("ship_to_party_name", "")
+        ship_str   = p.get("ship_to_party_street", "")
+        ship_num   = p.get("ship_to_party_street_number", "")
+        ship_zip   = p.get("ship_to_party_zip", "")
+        ship_city  = p.get("ship_to_party_city", "")
+        ship_cnt   = p.get("ship_to_party_country", "")
         # ▼ NEUES FELD: Wert aus gt_parse lesen (Key = Feldname in der JSONL)
-        # mein_feld = gt["gt_parse"].get("mein_feld", "")
+        # mein_feld = p.get("mein_feld", "")
 
         # Fehlende Felder → Tag weglassen.
         # Modell lernt: kein Tag im Output = Feld nicht im Dokument.
         parts = ""
-        if sold_to:
-            parts += f"{NAME_TOKEN}{sold_to}{NAME_END}"
-        if street:
-            parts += f"{STREET_TOKEN}{street}{STREET_END}"
-        if street_num:
-            parts += f"{STREET_NUM_TOKEN}{street_num}{STREET_NUM_END}"
-        if zip_code:
-            parts += f"{ZIP_TOKEN}{zip_code}{ZIP_END}"
-        if city:
-            parts += f"{CITY_TOKEN}{city}{CITY_END}"
-        if country:
-            parts += f"{COUNTRY_TOKEN}{country}{COUNTRY_END}"
+        if sold_to:    parts += f"{NAME_TOKEN}{sold_to}{NAME_END}"
+        if street:     parts += f"{STREET_TOKEN}{street}{STREET_END}"
+        if street_num: parts += f"{STREET_NUM_TOKEN}{street_num}{STREET_NUM_END}"
+        if zip_code:   parts += f"{ZIP_TOKEN}{zip_code}{ZIP_END}"
+        if city:       parts += f"{CITY_TOKEN}{city}{CITY_END}"
+        if country:    parts += f"{COUNTRY_TOKEN}{country}{COUNTRY_END}"
+        if ship_name:  parts += f"{SHIP_NAME_TOKEN}{ship_name}{SHIP_NAME_END}"
+        if ship_str:   parts += f"{SHIP_STREET_TOKEN}{ship_str}{SHIP_STREET_END}"
+        if ship_num:   parts += f"{SHIP_STREET_NUM_TOKEN}{ship_num}{SHIP_STREET_NUM_END}"
+        if ship_zip:   parts += f"{SHIP_ZIP_TOKEN}{ship_zip}{SHIP_ZIP_END}"
+        if ship_city:  parts += f"{SHIP_CITY_TOKEN}{ship_city}{SHIP_CITY_END}"
+        if ship_cnt:   parts += f"{SHIP_COUNTRY_TOKEN}{ship_cnt}{SHIP_COUNTRY_END}"
         # ▼ NEUES FELD: Sequenz-Block anhängen
         # if mein_feld:
         #     parts += f"{MEIN_FELD_TOKEN}{mein_feld}{MEIN_FELD_END}"
@@ -156,6 +166,12 @@ def setup_model_and_processor():
         ZIP_TOKEN, ZIP_END,
         CITY_TOKEN, CITY_END,
         COUNTRY_TOKEN, COUNTRY_END,
+        SHIP_NAME_TOKEN, SHIP_NAME_END,
+        SHIP_STREET_TOKEN, SHIP_STREET_END,
+        SHIP_STREET_NUM_TOKEN, SHIP_STREET_NUM_END,
+        SHIP_ZIP_TOKEN, SHIP_ZIP_END,
+        SHIP_CITY_TOKEN, SHIP_CITY_END,
+        SHIP_COUNTRY_TOKEN, SHIP_COUNTRY_END,
         # ▼ NEUES FELD: beide Tokens hier eintragen
         # MEIN_FELD_TOKEN, MEIN_FELD_END,
     ]})

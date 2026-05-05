@@ -28,6 +28,12 @@ COLUMNS = [
     "sold_to_party_zip",
     "sold_to_party_city",
     "sold_to_party_country",
+    "ship_to_party_name",
+    "ship_to_party_street",
+    "ship_to_party_street_number",
+    "ship_to_party_zip",
+    "ship_to_party_city",
+    "ship_to_party_country",
     "confidence",
     "raw_output",
 ]
@@ -47,10 +53,15 @@ def extract_from_pdf(pdf_path: str, model_path: str = _DEFAULT_MODEL) -> pd.Data
     """
     pdf_path = str(Path(pdf_path).resolve())
 
+    import os
+    env = os.environ.copy()
+    env["PYTHONIOENCODING"] = "utf-8"
+
     result = subprocess.run(
         [_VENV_PYTHON, _EXTRACT_SCRIPT, pdf_path, "--model", model_path],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
+        env=env,
     )
 
     stdout = result.stdout.decode("utf-8", errors="replace")

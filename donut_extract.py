@@ -37,9 +37,21 @@ ZIP_TOKEN          = "<s_sold_to_party_zip>"
 ZIP_END            = "</s_sold_to_party_zip>"
 CITY_TOKEN         = "<s_sold_to_party_city>"
 CITY_END           = "</s_sold_to_party_city>"
-COUNTRY_TOKEN      = "<s_sold_to_party_country>"
-COUNTRY_END        = "</s_sold_to_party_country>"
-MAX_LENGTH         = 128
+COUNTRY_TOKEN          = "<s_sold_to_party_country>"
+COUNTRY_END            = "</s_sold_to_party_country>"
+SHIP_NAME_TOKEN        = "<s_ship_to_party_name>"
+SHIP_NAME_END          = "</s_ship_to_party_name>"
+SHIP_STREET_TOKEN      = "<s_ship_to_party_street>"
+SHIP_STREET_END        = "</s_ship_to_party_street>"
+SHIP_STREET_NUM_TOKEN  = "<s_ship_to_party_street_number>"
+SHIP_STREET_NUM_END    = "</s_ship_to_party_street_number>"
+SHIP_ZIP_TOKEN         = "<s_ship_to_party_zip>"
+SHIP_ZIP_END           = "</s_ship_to_party_zip>"
+SHIP_CITY_TOKEN        = "<s_ship_to_party_city>"
+SHIP_CITY_END          = "</s_ship_to_party_city>"
+SHIP_COUNTRY_TOKEN     = "<s_ship_to_party_country>"
+SHIP_COUNTRY_END       = "</s_ship_to_party_country>"
+MAX_LENGTH             = 192
 
 
 class StopOnTaskEnd(StoppingCriteria):
@@ -120,6 +132,12 @@ def predict(image: Image.Image, model, processor, device) -> dict:
         ZIP_TOKEN, ZIP_END,
         CITY_TOKEN, CITY_END,
         COUNTRY_TOKEN, COUNTRY_END,
+        SHIP_NAME_TOKEN, SHIP_NAME_END,
+        SHIP_STREET_TOKEN, SHIP_STREET_END,
+        SHIP_STREET_NUM_TOKEN, SHIP_STREET_NUM_END,
+        SHIP_ZIP_TOKEN, SHIP_ZIP_END,
+        SHIP_CITY_TOKEN, SHIP_CITY_END,
+        SHIP_COUNTRY_TOKEN, SHIP_COUNTRY_END,
     ]))
     generated_ids = outputs.sequences[0][1:].tolist()
     per_token_probs = []
@@ -134,14 +152,20 @@ def predict(image: Image.Image, model, processor, device) -> dict:
     doc_conf = round(_geo_mean([p for tid, p in per_token_probs if tid not in skip_ids]), 4)
 
     return {
-        "sold_to_party_name":          parsed.get("sold_to_party_name", ""),
-        "sold_to_party_street":        parsed.get("sold_to_party_street", ""),
-        "sold_to_party_street_number": parsed.get("sold_to_party_street_number", ""),
-        "sold_to_party_zip":           parsed.get("sold_to_party_zip", ""),
-        "sold_to_party_city":          parsed.get("sold_to_party_city", ""),
-        "sold_to_party_country":       parsed.get("sold_to_party_country", ""),
-        "confidence":                  doc_conf,
-        "raw_output":                  seq_str.strip(),
+        "sold_to_party_name":              parsed.get("sold_to_party_name", ""),
+        "sold_to_party_street":            parsed.get("sold_to_party_street", ""),
+        "sold_to_party_street_number":     parsed.get("sold_to_party_street_number", ""),
+        "sold_to_party_zip":               parsed.get("sold_to_party_zip", ""),
+        "sold_to_party_city":              parsed.get("sold_to_party_city", ""),
+        "sold_to_party_country":           parsed.get("sold_to_party_country", ""),
+        "ship_to_party_name":              parsed.get("ship_to_party_name", ""),
+        "ship_to_party_street":            parsed.get("ship_to_party_street", ""),
+        "ship_to_party_street_number":     parsed.get("ship_to_party_street_number", ""),
+        "ship_to_party_zip":               parsed.get("ship_to_party_zip", ""),
+        "ship_to_party_city":              parsed.get("ship_to_party_city", ""),
+        "ship_to_party_country":           parsed.get("ship_to_party_country", ""),
+        "confidence":                      doc_conf,
+        "raw_output":                      seq_str.strip(),
     }
 
 
