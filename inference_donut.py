@@ -437,11 +437,17 @@ def evaluate(labels_file: str, img_dir: str, model, processor, device):
 
         status = "✓" if (labeled and all(ok.values())) else ("~" if any(ok.values()) else "✗")
         print(f"  {status}  {img_name}")
-        print(f"      Name  : pred={pred['sold_to_party_name'] or MISSING_LABEL}  gt={gt['sold_to_party_name'] or MISSING_LABEL}")
-        print(f"      Straße: pred={pred['sold_to_party_street'] or MISSING_LABEL} {pred['sold_to_party_street_number'] or MISSING_LABEL}  gt={gt['sold_to_party_street'] or MISSING_LABEL} {gt['sold_to_party_street_number'] or MISSING_LABEL}")
+        print(f"    [Sold-to]")
+        print(f"      Name   : pred={pred['sold_to_party_name'] or MISSING_LABEL}  gt={gt['sold_to_party_name'] or MISSING_LABEL}  {'✓' if ok.get('sold_to_party_name', '-') == True else ('✗' if ok.get('sold_to_party_name', '-') == False else '-')}")
+        print(f"      Straße : pred={pred['sold_to_party_street'] or MISSING_LABEL} {pred['sold_to_party_street_number'] or ''}  gt={gt['sold_to_party_street'] or MISSING_LABEL} {gt['sold_to_party_street_number'] or ''}")
         print(f"      PLZ/Ort: pred={pred['sold_to_party_zip'] or MISSING_LABEL} {pred['sold_to_party_city'] or MISSING_LABEL}  gt={gt['sold_to_party_zip'] or MISSING_LABEL} {gt['sold_to_party_city'] or MISSING_LABEL}")
-        print(f"      Land  : pred={pred['sold_to_party_country'] or MISSING_LABEL}  gt={gt['sold_to_party_country'] or MISSING_LABEL}")
-        print(f"      RAW: {result['raw_output']}\n")
+        print(f"      Land   : pred={pred['sold_to_party_country'] or MISSING_LABEL}  gt={gt['sold_to_party_country'] or MISSING_LABEL}")
+        print(f"    [Ship-to]")
+        print(f"      Name   : pred={pred['ship_to_party_name'] or MISSING_LABEL}  gt={gt['ship_to_party_name'] or MISSING_LABEL}  {'✓' if ok.get('ship_to_party_name', '-') == True else ('✗' if ok.get('ship_to_party_name', '-') == False else '-')}")
+        print(f"      Straße : pred={pred['ship_to_party_street'] or MISSING_LABEL} {pred['ship_to_party_street_number'] or ''}  gt={gt['ship_to_party_street'] or MISSING_LABEL} {gt['ship_to_party_street_number'] or ''}")
+        print(f"      PLZ/Ort: pred={pred['ship_to_party_zip'] or MISSING_LABEL} {pred['ship_to_party_city'] or MISSING_LABEL}  gt={gt['ship_to_party_zip'] or MISSING_LABEL} {gt['ship_to_party_city'] or MISSING_LABEL}")
+        print(f"      Land   : pred={pred['ship_to_party_country'] or MISSING_LABEL}  gt={gt['ship_to_party_country'] or MISSING_LABEL}")
+        print(f"    RAW: {result['raw_output']}\n")
 
     if n:
         print(f"{'='*55}")
