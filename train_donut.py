@@ -188,7 +188,8 @@ class StopOnTaskEnd(StoppingCriteria):
         self.task_end_token_id = task_end_token_id
 
     def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs) -> bool:
-        return input_ids[0, -1].item() == self.task_end_token_id
+        return all(input_ids[i, -1].item() == self.task_end_token_id
+                   for i in range(input_ids.shape[0]))
 
 
 # ---------------------------------------------------------------------------
