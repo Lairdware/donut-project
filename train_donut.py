@@ -38,6 +38,9 @@ ORDER_NUM_TOKEN   = "<s_order_number>"
 ORDER_NUM_END     = "</s_order_number>"
 SOLD_TO_TOKEN     = "<s_sold_to_party_name>"
 SOLD_TO_END       = "</s_sold_to_party_name>"
+# ▼ NEUES FELD: Tokens hier definieren (Schema: "<s_feldname>" / "</s_feldname>")
+# MEIN_FELD_TOKEN = "<s_mein_feld>"
+# MEIN_FELD_END   = "</s_mein_feld>"
 
 # Zielformat (Labels, <s_order> wird automatisch vorne eingefügt):
 #   beide Felder : <s_order_number>ORD-…</s_order_number><s_sold_to_party_name>…</s_sold_to_party_name></s_order>
@@ -82,6 +85,8 @@ class OrderDataset(Dataset):
         gt           = json.loads(sample["ground_truth"])
         order_number = gt["gt_parse"].get("order_number", "")
         sold_to      = gt["gt_parse"].get("sold_to_party_name", "")
+        # ▼ NEUES FELD: Wert aus gt_parse lesen (Key = Feldname in der JSONL)
+        # mein_feld = gt["gt_parse"].get("mein_feld", "")
 
         # Fehlende Felder → Tag weglassen.
         # Modell lernt: kein Tag im Output = Feld nicht im Dokument.
@@ -90,6 +95,9 @@ class OrderDataset(Dataset):
             parts += f"{ORDER_NUM_TOKEN}{order_number}{ORDER_NUM_END}"
         if sold_to:
             parts += f"{SOLD_TO_TOKEN}{sold_to}{SOLD_TO_END}"
+        # ▼ NEUES FELD: Sequenz-Block anhängen
+        # if mein_feld:
+        #     parts += f"{MEIN_FELD_TOKEN}{mein_feld}{MEIN_FELD_END}"
         target_sequence = parts + TASK_END_TOKEN
 
         pixel_values = self.processor(
@@ -120,6 +128,8 @@ def setup_model_and_processor():
         TASK_TOKEN, TASK_END_TOKEN,
         ORDER_NUM_TOKEN, ORDER_NUM_END,
         SOLD_TO_TOKEN, SOLD_TO_END,
+        # ▼ NEUES FELD: beide Tokens hier eintragen
+        # MEIN_FELD_TOKEN, MEIN_FELD_END,
     ]})
 
     processor.image_processor.size = {"height": IMAGE_SIZE[0], "width": IMAGE_SIZE[1]}

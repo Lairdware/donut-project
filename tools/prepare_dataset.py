@@ -38,6 +38,7 @@ def load_labels(labels_file: Path) -> list[dict]:
             if "image" not in entry:
                 print(f"  [WARNUNG] Zeile {lineno}: 'image' fehlt, übersprungen.")
                 continue
+            # ▼ NEUES FELD: Feldname hier zur Leer-Prüfung ergänzen
             if not entry.get("order_number") and not entry.get("sold_to_party_name"):
                 print(f"  [WARNUNG] {entry['image']}: alle Felder leer, übersprungen.")
                 continue
@@ -53,6 +54,9 @@ def to_ground_truth(entry: dict) -> str:
         gt_parse["order_number"] = entry["order_number"]
     if entry.get("sold_to_party_name"):
         gt_parse["sold_to_party_name"] = entry["sold_to_party_name"]
+    # ▼ NEUES FELD: Wert aus labels.jsonl in gt_parse übernehmen
+    # if entry.get("mein_feld"):
+    #     gt_parse["mein_feld"] = entry["mein_feld"]
     return json.dumps({"gt_parse": gt_parse}, ensure_ascii=False)
 
 

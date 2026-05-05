@@ -40,6 +40,9 @@ ORDER_NUM_TOKEN    = "<s_order_number>"
 ORDER_NUM_END      = "</s_order_number>"
 SOLD_TO_TOKEN      = "<s_sold_to_party_name>"
 SOLD_TO_END        = "</s_sold_to_party_name>"
+# ▼ NEUES FELD: Tokens hier definieren (muss mit train_donut.py übereinstimmen)
+# MEIN_FELD_TOKEN = "<s_mein_feld>"
+# MEIN_FELD_END   = "</s_mein_feld>"
 MAX_LENGTH         = 56   # etwas mehr Puffer für lange Beträge
 CONFIDENCE_HIGH    = 0.85
 CONFIDENCE_LOW     = 0.50
@@ -64,6 +67,8 @@ def compute_confidences(sequences: torch.Tensor, scores: tuple,
         TASK_TOKEN, TASK_END_TOKEN,
         ORDER_NUM_TOKEN, ORDER_NUM_END,
         SOLD_TO_TOKEN, SOLD_TO_END,
+        # ▼ NEUES FELD: beide Tokens eintragen damit sie nicht als Inhalt gewertet werden
+        # MEIN_FELD_TOKEN, MEIN_FELD_END,
     ]))
     structural_ids.discard(tok.unk_token_id)
 
@@ -85,11 +90,15 @@ def compute_confidences(sequences: torch.Tensor, scores: tuple,
     field_start_map = {
         tok.convert_tokens_to_ids(ORDER_NUM_TOKEN): "order_number",
         tok.convert_tokens_to_ids(SOLD_TO_TOKEN):   "sold_to_party_name",
+        # ▼ NEUES FELD: Start-Token → Feldname (Key muss mit parse_output übereinstimmen)
+        # tok.convert_tokens_to_ids(MEIN_FELD_TOKEN): "mein_feld",
     }
     field_end_ids = {
         tok.convert_tokens_to_ids(ORDER_NUM_END),
         tok.convert_tokens_to_ids(SOLD_TO_END),
         tok.convert_tokens_to_ids(TASK_END_TOKEN),
+        # ▼ NEUES FELD: End-Token eintragen
+        # tok.convert_tokens_to_ids(MEIN_FELD_END),
     }
 
     current_field: Optional[str] = None
@@ -223,7 +232,8 @@ def predict_single(image_path: str, model, processor, device,
             eos_token_id=processor.tokenizer.eos_token_id,
             stopping_criteria=stop_criteria,
             num_beams=1,
-            repetition_penalty=1.8,
+            repetition_penalty=1.0,
+            no_repeat_ngram_size=4,
             output_scores=True,
             return_dict_in_generate=True,
         )
@@ -274,10 +284,13 @@ def process_directory(dir_path: str, model, processor, device) -> list:
 
         order_number  = parsed.get("order_number",      MISSING_LABEL)
         sold_to       = parsed.get("sold_to_party_name", MISSING_LABEL)
+        # ▼ NEUES FELD: Wert aus parsed holen (Key = Feldname aus field_start_map)
+        # mein_feld = parsed.get("mein_feld", MISSING_LABEL)
 
         print(
             f"{i:<5} {img_path.name:<28} {order_number:<22} {sold_to:<30} "
             f"{doc_conf:>5.1%}  [{status}]  ({elapsed:.2f}s)"
+            # ▼ NEUES FELD: Spalte zur Tabellenzeile hinzufügen
         )
         print(f"      RAW: {result['raw_output']}")
 
@@ -285,6 +298,9 @@ def process_directory(dir_path: str, model, processor, device) -> list:
             "file":                         img_path.name,
             "order_number":                 order_number,
             "sold_to_party_name":           sold_to,
+            # ▼ NEUES FELD: Wert und Konfidenz ins Ergebnis-Dict eintragen
+            # "mein_feld":                  mein_feld,
+            # "confidence_mein_feld":       result["confidence"]["fields"].get("mein_feld", 0.0),
             "confidence_document":          doc_conf,
             "confidence_order_number":      result["confidence"]["fields"].get("order_number", 0.0),
             "confidence_sold_to_party_name": result["confidence"]["fields"].get("sold_to_party_name", 0.0),
@@ -395,6 +411,8 @@ def main():
         print("\n" + "=" * 55)
         print(f"  Bestellnummer      : {parsed.get('order_number',       MISSING_LABEL)}")
         print(f"  Sold-to Party      : {parsed.get('sold_to_party_name', MISSING_LABEL)}")
+        # ▼ NEUES FELD: Ausgabe für --image / --pdf Modus
+        # print(f"  Mein Feld          : {parsed.get('mein_feld', MISSING_LABEL)}")
         print(f"  Rohausgabe         : {result['raw_output']}")
         print(f"  Dok-Konfidenz      : {conf['document']:.1%}  [{doc_lbl}]")
         for field, fc in conf["fields"].items():
