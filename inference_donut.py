@@ -36,8 +36,8 @@ from transformers import (
 DEFAULT_MODEL          = "output/donut_orders/best_model"
 TASK_TOKEN             = "<s_order>"
 TASK_END_TOKEN         = "</s_order>"
-SOLD_TO_PARTY_TOKEN    = "<s_sold_to_party_name>"
-SOLD_TO_PARTY_END      = "</s_sold_to_party_name>"
+NAME_TOKEN    = "<s_sold_to_party_name>"
+NAME_END      = "</s_sold_to_party_name>"
 STREET_TOKEN           = "<s_sold_to_party_street>"
 STREET_END             = "</s_sold_to_party_street>"
 STREET_NUM_TOKEN       = "<s_sold_to_party_street_number>"
@@ -73,7 +73,7 @@ def compute_confidences(sequences: torch.Tensor, scores: tuple,
 
     structural_ids = set(tok.convert_tokens_to_ids([
         TASK_TOKEN, TASK_END_TOKEN,
-        SOLD_TO_PARTY_TOKEN, SOLD_TO_PARTY_END,
+        NAME_TOKEN, NAME_END,
         STREET_TOKEN, STREET_END,
         STREET_NUM_TOKEN, STREET_NUM_END,
         ZIP_TOKEN, ZIP_END,
@@ -100,7 +100,7 @@ def compute_confidences(sequences: torch.Tensor, scores: tuple,
 
     # Feld-Konfidenzen
     field_start_map = {
-        tok.convert_tokens_to_ids(SOLD_TO_PARTY_TOKEN): "sold_to_party_name",
+        tok.convert_tokens_to_ids(NAME_TOKEN): "sold_to_party_name",
         tok.convert_tokens_to_ids(STREET_TOKEN):        "sold_to_party_street",
         tok.convert_tokens_to_ids(STREET_NUM_TOKEN):    "sold_to_party_street_number",
         tok.convert_tokens_to_ids(ZIP_TOKEN):           "sold_to_party_zip",
@@ -110,7 +110,7 @@ def compute_confidences(sequences: torch.Tensor, scores: tuple,
         # tok.convert_tokens_to_ids(MEIN_FELD_TOKEN): "mein_feld",
     }
     field_end_ids = {
-        tok.convert_tokens_to_ids(SOLD_TO_PARTY_END),
+        tok.convert_tokens_to_ids(NAME_END),
         tok.convert_tokens_to_ids(STREET_END),
         tok.convert_tokens_to_ids(STREET_NUM_END),
         tok.convert_tokens_to_ids(ZIP_END),
@@ -332,9 +332,22 @@ def process_directory(dir_path: str, model, processor, device) -> list:
 # ---------------------------------------------------------------------------
 # Evaluation gegen labels.jsonl
 # ---------------------------------------------------------------------------
+def _parse_label_entry(entry: dict) -> dict:
+    """Normalisiert beide JSONL-Formate auf ein einheitliches Dict."""
+    # Format 1 (dataset/labels.jsonl): {"image": "...", "sold_to_party_name": "...", ...}
+    if "image" in entry or not "ground_truth" in entry:
+        result = dict(entry)
+        result.setdefault("image", entry.get("file_name", ""))
+        return result
+    # Format 2 (data/val/metadata.jsonl): {"file_name": "...", "ground_truth": "{\"gt_parse\": {...}}"}
+    result = json.loads(entry["ground_truth"]).get("gt_parse", {})
+    result["image"] = entry.get("file_name", "")
+    return result
+
+
 def evaluate(labels_file: str, img_dir: str, model, processor, device):
     with open(labels_file, encoding="utf-8") as f:
-        labels = [json.loads(l) for l in f if l.strip()]
+        labels = [_parse_label_entry(json.loads(l)) for l in f if l.strip()]
 
     FIELDS = [
         "sold_to_party_name",
@@ -344,7 +357,8 @@ def evaluate(labels_file: str, img_dir: str, model, processor, device):
         "sold_to_party_city",
         "sold_to_party_country",
     ]
-    correct = {f: 0 for f in FIELDS}
+    # correct[f] = (richtig, gesamt) — nur Einträge wo GT nicht leer ist
+    correct = {f: [0, 0] for f in FIELDS}
     correct_all = 0
     n = 0
 
@@ -362,16 +376,21 @@ def evaluate(labels_file: str, img_dir: str, model, processor, device):
 
         pred = {f: parsed.get(f, "") for f in FIELDS}
         gt   = {f: entry.get(f, "")  for f in FIELDS}
-        ok   = {f: pred[f] == gt[f]  for f in FIELDS}
 
-        for f in FIELDS:
+        # Nur Felder zählen die im Label tatsächlich befüllt sind.
+        # Leeres GT + leere Pred würde sonst fälschlich als korrekt zählen.
+        labeled = [f for f in FIELDS if gt[f]]
+        ok = {f: pred[f] == gt[f] for f in labeled}
+
+        for f in labeled:
+            correct[f][1] += 1
             if ok[f]:
-                correct[f] += 1
-        if all(ok.values()):
+                correct[f][0] += 1
+        if labeled and all(ok.values()):
             correct_all += 1
         n += 1
 
-        status = "✓" if all(ok.values()) else ("~" if any(ok.values()) else "✗")
+        status = "✓" if (labeled and all(ok.values())) else ("~" if any(ok.values()) else "✗")
         print(f"  {status}  {img_name}")
         print(f"      Name  : pred={pred['sold_to_party_name'] or MISSING_LABEL}  gt={gt['sold_to_party_name'] or MISSING_LABEL}")
         print(f"      Straße: pred={pred['sold_to_party_street'] or MISSING_LABEL} {pred['sold_to_party_street_number'] or MISSING_LABEL}  gt={gt['sold_to_party_street'] or MISSING_LABEL} {gt['sold_to_party_street_number'] or MISSING_LABEL}")
@@ -382,7 +401,11 @@ def evaluate(labels_file: str, img_dir: str, model, processor, device):
     if n:
         print(f"{'='*55}")
         for f in FIELDS:
-            print(f"  {f:<40}: {correct[f]}/{n}  ({correct[f]/n:.1%})")
+            hits, total = correct[f]
+            if total:
+                print(f"  {f:<40}: {hits}/{total}  ({hits/total:.1%})")
+            else:
+                print(f"  {f:<40}: nicht gelabelt")
         print(f"  {'Alle korrekt':<40}: {correct_all}/{n}  ({correct_all/n:.1%})")
         print(f"{'='*55}")
 
