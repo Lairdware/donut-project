@@ -171,15 +171,16 @@ def compute_confidences(sequences: torch.Tensor, scores: tuple,
     }
 
     skip_ids = structural_ids | {tok.eos_token_id, tok.pad_token_id}
-    doc_conf = round(_geo_mean([
-        item["prob"] for item in per_token if item["id"] not in skip_ids
-    ]), 4)
+    content_probs = [item["prob"] for item in per_token if item["id"] not in skip_ids]
+    doc_conf     = round(_geo_mean(content_probs), 4)
+    doc_min_conf = round(min(content_probs), 4) if content_probs else 0.0
 
     return {
-        "document": doc_conf,
-        "fields":   field_confidences,
-        "per_token": [{"token": t["token"], "prob": round(t["prob"], 4)}
-                      for t in per_token],
+        "document":     doc_conf,
+        "document_min": doc_min_conf,
+        "fields":       field_confidences,
+        "per_token":    [{"token": t["token"], "prob": round(t["prob"], 4)}
+                         for t in per_token],
     }
 
 
@@ -315,8 +316,9 @@ def process_directory(dir_path: str, model, processor, device) -> list:
         elapsed = time.time() - t0
 
         parsed   = result["parsed"]
-        doc_conf = result["confidence"]["document"]
-        status   = confidence_label(doc_conf)
+        doc_conf     = result["confidence"]["document"]
+        doc_min_conf = result["confidence"]["document_min"]
+        status       = confidence_label(doc_conf)
 
         sold_to    = parsed.get("sold_to_party_name",               MISSING_LABEL)
         street     = parsed.get("sold_to_party_street",            MISSING_LABEL)
@@ -335,7 +337,7 @@ def process_directory(dir_path: str, model, processor, device) -> list:
 
         print(
             f"{i:<5} {img_path.name:<28} {sold_to:<30} {city:<20} {country:<16} "
-            f"{doc_conf:>5.1%}  [{status}]  ({elapsed:.2f}s)"
+            f"avg={doc_conf:>5.1%} min={doc_min_conf:>5.1%}  [{status}]  ({elapsed:.2f}s)"
         )
         print(f"      RAW: {result['raw_output']}")
 
