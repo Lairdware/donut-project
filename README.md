@@ -126,16 +126,20 @@ python inference_donut.py --image x.png --model output/donut_orders/checkpoint-2
 
 ## Neues Feld hinzufügen
 
-An allen mit `# ▼ NEUES FELD` markierten Stellen eintragen. Reihenfolge:
+Suche in jedem File nach `# ▼ NEUES FELD` und trage dort ein. Immer alle 9 Stellen anfassen — sonst stimmt Training und Inference nicht überein.
 
-### 1. `train_donut.py` — Token-Konstanten
+---
+
+### 1. `train_donut.py` — Token-Konstanten definieren
 
 ```python
 MEIN_FELD_TOKEN = "<s_mein_feld>"
 MEIN_FELD_END   = "</s_mein_feld>"
 ```
 
-### 2. `train_donut.py` — Token registrieren
+---
+
+### 2. `train_donut.py` — Token beim Tokenizer registrieren
 
 ```python
 processor.tokenizer.add_special_tokens({"additional_special_tokens": [
@@ -144,14 +148,17 @@ processor.tokenizer.add_special_tokens({"additional_special_tokens": [
 ]})
 ```
 
-### 3. `train_donut.py` — Wert lesen + Sequenz bauen
+---
+
+### 3. `train_donut.py` — Wert aus JSONL lesen und Sequenz bauen
 
 ```python
-mein_feld = gt["gt_parse"].get("mein_feld", "")
+mein_feld = p.get("mein_feld", "")
 ...
-if mein_feld:
-    parts += f"{MEIN_FELD_TOKEN}{mein_feld}{MEIN_FELD_END}"
+if mein_feld: parts += f"{MEIN_FELD_TOKEN}{mein_feld}{MEIN_FELD_END}"
 ```
+
+---
 
 ### 4. `inference_donut.py` — Token-Konstanten (identisch zu train)
 
@@ -160,11 +167,22 @@ MEIN_FELD_TOKEN = "<s_mein_feld>"
 MEIN_FELD_END   = "</s_mein_feld>"
 ```
 
-### 5. `inference_donut.py` — `structural_ids`, `field_start_map`, `field_end_ids`
+---
+
+### 5. `inference_donut.py` — `structural_ids` (Konfidenz-Berechnung)
 
 ```python
-structural_ids = set(tok.convert_tokens_to_ids([..., MEIN_FELD_TOKEN, MEIN_FELD_END]))
+structural_ids = set(tok.convert_tokens_to_ids([
+    ...
+    MEIN_FELD_TOKEN, MEIN_FELD_END,
+]))
+```
 
+---
+
+### 6. `inference_donut.py` — `field_start_map` und `field_end_ids`
+
+```python
 field_start_map = {
     ...
     tok.convert_tokens_to_ids(MEIN_FELD_TOKEN): "mein_feld",
@@ -176,24 +194,52 @@ field_end_ids = {
 }
 ```
 
-### 6. `inference_donut.py` — Ausgabe
+---
+
+### 7. `donut_extract.py` — Token-Konstanten + `structural_ids` + Rückgabe
 
 ```python
-mein_feld = parsed.get("mein_feld", MISSING_LABEL)
-# im results-Dict:
-"mein_feld": mein_feld,
-"confidence_mein_feld": result["confidence"]["fields"].get("mein_feld", 0.0),
+# Konstanten (wie in train/inference):
+MEIN_FELD_TOKEN = "<s_mein_feld>"
+MEIN_FELD_END   = "</s_mein_feld>"
+
+# in structural_ids:
+MEIN_FELD_TOKEN, MEIN_FELD_END,
+
+# im return-Dict von predict():
+"mein_feld": parsed.get("mein_feld", ""),
 ```
 
-### 7. `tools/prepare_dataset.py` — Labels übernehmen
+---
+
+### 8. `donut_client.py` — Spalte im DataFrame
 
 ```python
-# in to_ground_truth():
-if entry.get("mein_feld"):
-    gt_parse["mein_feld"] = entry["mein_feld"]
+COLUMNS = [
+    ...
+    "mein_feld",
+]
 ```
 
-Außerdem `dataset/labels.jsonl` um das neue Feld ergänzen und `prepare_dataset.py` neu ausführen, dann neu trainieren.
+---
+
+### 9. `tools/prepare_dataset.py` — Feld in die GT-Liste
+
+```python
+for field in [
+    ...
+    "mein_feld",
+]:
+```
+
+---
+
+### Danach
+
+1. `dataset/labels.jsonl` um das neue Feld ergänzen
+2. `python tools/prepare_dataset.py` ausführen
+3. `output/donut_orders/` löschen
+4. `python train_donut.py` neu trainieren
 
 ---
 
@@ -204,6 +250,6 @@ Außerdem `dataset/labels.jsonl` um das neue Feld ergänzen und `prepare_dataset
 | Feld nie gefunden | Altes Modell geladen | `output/donut_orders/` löschen, neu trainieren |
 | Feld immer leer | JSONL hat leere Werte | `prepare_dataset.py` prüfen |
 | Punktuation falsch (`s.r.o,`) | `repetition_penalty` zu hoch | `repetition_penalty=1.0` in `inference_donut.py` |
-| Name doppelt ausgegeben | Modell wiederholt Sequenz | `no_repeat_ngram_size=4` in `inference_donut.py` |
+| Falsche Ausgabe trotz 100% Val-Acc | `no_repeat_ngram_size` blockiert legitime Wiederholungen | Parameter entfernen, nur `repetition_penalty=1.0` behalten |
 | 100% Val-Acc, 0 Treffer | Feld in Trainings-JSONL leer | Labels prüfen, `prepare_dataset.py` neu ausführen |
 | Sequenz abgeschnitten | `MAX_LENGTH` zu klein | Wert in `train_donut.py` + `inference_donut.py` erhöhen |
