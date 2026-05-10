@@ -51,6 +51,18 @@ SHIP_CITY_TOKEN        = "<s_ship_to_party_city>"
 SHIP_CITY_END          = "</s_ship_to_party_city>"
 SHIP_COUNTRY_TOKEN     = "<s_ship_to_party_country>"
 SHIP_COUNTRY_END       = "</s_ship_to_party_country>"
+INV_NAME_TOKEN         = "<s_invoice_to_party_name>"
+INV_NAME_END           = "</s_invoice_to_party_name>"
+INV_STREET_TOKEN       = "<s_invoice_to_party_street>"
+INV_STREET_END         = "</s_invoice_to_party_street>"
+INV_STREET_NUM_TOKEN   = "<s_invoice_to_party_street_number>"
+INV_STREET_NUM_END     = "</s_invoice_to_party_street_number>"
+INV_ZIP_TOKEN          = "<s_invoice_to_party_zip>"
+INV_ZIP_END            = "</s_invoice_to_party_zip>"
+INV_CITY_TOKEN         = "<s_invoice_to_party_city>"
+INV_CITY_END           = "</s_invoice_to_party_city>"
+INV_COUNTRY_TOKEN      = "<s_invoice_to_party_country>"
+INV_COUNTRY_END        = "</s_invoice_to_party_country>"
 MAX_LENGTH             = 192
 
 
@@ -137,6 +149,12 @@ def predict(image: Image.Image, model, processor, device) -> dict:
         SHIP_ZIP_TOKEN, SHIP_ZIP_END,
         SHIP_CITY_TOKEN, SHIP_CITY_END,
         SHIP_COUNTRY_TOKEN, SHIP_COUNTRY_END,
+        INV_NAME_TOKEN, INV_NAME_END,
+        INV_STREET_TOKEN, INV_STREET_END,
+        INV_STREET_NUM_TOKEN, INV_STREET_NUM_END,
+        INV_ZIP_TOKEN, INV_ZIP_END,
+        INV_CITY_TOKEN, INV_CITY_END,
+        INV_COUNTRY_TOKEN, INV_COUNTRY_END,
     ]))
     generated_ids = outputs.sequences[0][1:].tolist()
     per_token_probs = []
@@ -163,6 +181,12 @@ def predict(image: Image.Image, model, processor, device) -> dict:
         "ship_to_party_zip":               parsed.get("ship_to_party_zip", ""),
         "ship_to_party_city":              parsed.get("ship_to_party_city", ""),
         "ship_to_party_country":           parsed.get("ship_to_party_country", ""),
+        "invoice_to_party_name":           parsed.get("invoice_to_party_name", ""),
+        "invoice_to_party_street":         parsed.get("invoice_to_party_street", ""),
+        "invoice_to_party_street_number":  parsed.get("invoice_to_party_street_number", ""),
+        "invoice_to_party_zip":            parsed.get("invoice_to_party_zip", ""),
+        "invoice_to_party_city":           parsed.get("invoice_to_party_city", ""),
+        "invoice_to_party_country":        parsed.get("invoice_to_party_country", ""),
         "confidence":                      doc_conf,
         "raw_output":                      seq_str.strip(),
     }

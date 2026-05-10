@@ -63,6 +63,12 @@ def to_ground_truth(entry: dict) -> str:
         "ship_to_party_zip",
         "ship_to_party_city",
         "ship_to_party_country",
+        "invoice_to_party_name",
+        "invoice_to_party_street",
+        "invoice_to_party_street_number",
+        "invoice_to_party_zip",
+        "invoice_to_party_city",
+        "invoice_to_party_country",
         # ▼ NEUES FELD: Feldname hier eintragen
         # "mein_feld",
     ]:

@@ -60,6 +60,18 @@ SHIP_CITY_TOKEN        = "<s_ship_to_party_city>"
 SHIP_CITY_END          = "</s_ship_to_party_city>"
 SHIP_COUNTRY_TOKEN     = "<s_ship_to_party_country>"
 SHIP_COUNTRY_END       = "</s_ship_to_party_country>"
+INV_NAME_TOKEN         = "<s_invoice_to_party_name>"
+INV_NAME_END           = "</s_invoice_to_party_name>"
+INV_STREET_TOKEN       = "<s_invoice_to_party_street>"
+INV_STREET_END         = "</s_invoice_to_party_street>"
+INV_STREET_NUM_TOKEN   = "<s_invoice_to_party_street_number>"
+INV_STREET_NUM_END     = "</s_invoice_to_party_street_number>"
+INV_ZIP_TOKEN          = "<s_invoice_to_party_zip>"
+INV_ZIP_END            = "</s_invoice_to_party_zip>"
+INV_CITY_TOKEN         = "<s_invoice_to_party_city>"
+INV_CITY_END           = "</s_invoice_to_party_city>"
+INV_COUNTRY_TOKEN      = "<s_invoice_to_party_country>"
+INV_COUNTRY_END        = "</s_invoice_to_party_country>"
 # ▼ NEUES FELD: Tokens hier definieren (muss mit train_donut.py übereinstimmen)
 # MEIN_FELD_TOKEN = "<s_mein_feld>"
 # MEIN_FELD_END   = "</s_mein_feld>"
@@ -98,6 +110,12 @@ def compute_confidences(sequences: torch.Tensor, scores: tuple,
         SHIP_ZIP_TOKEN, SHIP_ZIP_END,
         SHIP_CITY_TOKEN, SHIP_CITY_END,
         SHIP_COUNTRY_TOKEN, SHIP_COUNTRY_END,
+        INV_NAME_TOKEN, INV_NAME_END,
+        INV_STREET_TOKEN, INV_STREET_END,
+        INV_STREET_NUM_TOKEN, INV_STREET_NUM_END,
+        INV_ZIP_TOKEN, INV_ZIP_END,
+        INV_CITY_TOKEN, INV_CITY_END,
+        INV_COUNTRY_TOKEN, INV_COUNTRY_END,
         # ▼ NEUES FELD: beide Tokens eintragen damit sie nicht als Inhalt gewertet werden
         # MEIN_FELD_TOKEN, MEIN_FELD_END,
     ]))
@@ -131,6 +149,12 @@ def compute_confidences(sequences: torch.Tensor, scores: tuple,
         tok.convert_tokens_to_ids(SHIP_ZIP_TOKEN):        "ship_to_party_zip",
         tok.convert_tokens_to_ids(SHIP_CITY_TOKEN):       "ship_to_party_city",
         tok.convert_tokens_to_ids(SHIP_COUNTRY_TOKEN):    "ship_to_party_country",
+        tok.convert_tokens_to_ids(INV_NAME_TOKEN):         "invoice_to_party_name",
+        tok.convert_tokens_to_ids(INV_STREET_TOKEN):       "invoice_to_party_street",
+        tok.convert_tokens_to_ids(INV_STREET_NUM_TOKEN):   "invoice_to_party_street_number",
+        tok.convert_tokens_to_ids(INV_ZIP_TOKEN):          "invoice_to_party_zip",
+        tok.convert_tokens_to_ids(INV_CITY_TOKEN):         "invoice_to_party_city",
+        tok.convert_tokens_to_ids(INV_COUNTRY_TOKEN):      "invoice_to_party_country",
         # ▼ NEUES FELD: Start-Token → Feldname (Key muss mit parse_output übereinstimmen)
         # tok.convert_tokens_to_ids(MEIN_FELD_TOKEN): "mein_feld",
     }
@@ -147,6 +171,12 @@ def compute_confidences(sequences: torch.Tensor, scores: tuple,
         tok.convert_tokens_to_ids(SHIP_ZIP_END),
         tok.convert_tokens_to_ids(SHIP_CITY_END),
         tok.convert_tokens_to_ids(SHIP_COUNTRY_END),
+        tok.convert_tokens_to_ids(INV_NAME_END),
+        tok.convert_tokens_to_ids(INV_STREET_END),
+        tok.convert_tokens_to_ids(INV_STREET_NUM_END),
+        tok.convert_tokens_to_ids(INV_ZIP_END),
+        tok.convert_tokens_to_ids(INV_CITY_END),
+        tok.convert_tokens_to_ids(INV_COUNTRY_END),
         tok.convert_tokens_to_ids(TASK_END_TOKEN),
         # ▼ NEUES FELD: End-Token eintragen
         # tok.convert_tokens_to_ids(MEIN_FELD_END),
@@ -332,6 +362,12 @@ def process_directory(dir_path: str, model, processor, device) -> list:
         ship_zip   = parsed.get("ship_to_party_zip",               MISSING_LABEL)
         ship_city  = parsed.get("ship_to_party_city",              MISSING_LABEL)
         ship_cnt   = parsed.get("ship_to_party_country",           MISSING_LABEL)
+        inv_name   = parsed.get("invoice_to_party_name",           MISSING_LABEL)
+        inv_str    = parsed.get("invoice_to_party_street",         MISSING_LABEL)
+        inv_num    = parsed.get("invoice_to_party_street_number",  MISSING_LABEL)
+        inv_zip    = parsed.get("invoice_to_party_zip",            MISSING_LABEL)
+        inv_city   = parsed.get("invoice_to_party_city",           MISSING_LABEL)
+        inv_cnt    = parsed.get("invoice_to_party_country",        MISSING_LABEL)
         # ▼ NEUES FELD: Wert aus parsed holen (Key = Feldname aus field_start_map)
         # mein_feld = parsed.get("mein_feld", MISSING_LABEL)
 
@@ -356,6 +392,12 @@ def process_directory(dir_path: str, model, processor, device) -> list:
             "ship_to_party_zip":                       ship_zip,
             "ship_to_party_city":                      ship_city,
             "ship_to_party_country":                   ship_cnt,
+            "invoice_to_party_name":                   inv_name,
+            "invoice_to_party_street":                 inv_str,
+            "invoice_to_party_street_number":          inv_num,
+            "invoice_to_party_zip":                    inv_zip,
+            "invoice_to_party_city":                   inv_city,
+            "invoice_to_party_country":                inv_cnt,
             # ▼ NEUES FELD: Wert und Konfidenz ins Ergebnis-Dict eintragen
             # "mein_feld":                             mein_feld,
             # "confidence_mein_feld":                  conf_fields.get("mein_feld", 0.0),
@@ -403,6 +445,12 @@ def evaluate(labels_file: str, img_dir: str, model, processor, device):
         "ship_to_party_zip",
         "ship_to_party_city",
         "ship_to_party_country",
+        "invoice_to_party_name",
+        "invoice_to_party_street",
+        "invoice_to_party_street_number",
+        "invoice_to_party_zip",
+        "invoice_to_party_city",
+        "invoice_to_party_country",
     ]
     # correct[f] = (richtig, gesamt) — nur Einträge wo GT nicht leer ist
     correct = {f: [0, 0] for f in FIELDS}

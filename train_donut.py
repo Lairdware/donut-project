@@ -58,6 +58,18 @@ SHIP_CITY_TOKEN        = "<s_ship_to_party_city>"
 SHIP_CITY_END          = "</s_ship_to_party_city>"
 SHIP_COUNTRY_TOKEN     = "<s_ship_to_party_country>"
 SHIP_COUNTRY_END       = "</s_ship_to_party_country>"
+INV_NAME_TOKEN         = "<s_invoice_to_party_name>"
+INV_NAME_END           = "</s_invoice_to_party_name>"
+INV_STREET_TOKEN       = "<s_invoice_to_party_street>"
+INV_STREET_END         = "</s_invoice_to_party_street>"
+INV_STREET_NUM_TOKEN   = "<s_invoice_to_party_street_number>"
+INV_STREET_NUM_END     = "</s_invoice_to_party_street_number>"
+INV_ZIP_TOKEN          = "<s_invoice_to_party_zip>"
+INV_ZIP_END            = "</s_invoice_to_party_zip>"
+INV_CITY_TOKEN         = "<s_invoice_to_party_city>"
+INV_CITY_END           = "</s_invoice_to_party_city>"
+INV_COUNTRY_TOKEN      = "<s_invoice_to_party_country>"
+INV_COUNTRY_END        = "</s_invoice_to_party_country>"
 # ▼ NEUES FELD: Tokens hier definieren (Schema: "<s_feldname>" / "</s_feldname>")
 # MEIN_FELD_TOKEN = "<s_mein_feld>"
 # MEIN_FELD_END   = "</s_mein_feld>"
@@ -111,6 +123,12 @@ class OrderDataset(Dataset):
         ship_zip   = p.get("ship_to_party_zip", "")
         ship_city  = p.get("ship_to_party_city", "")
         ship_cnt   = p.get("ship_to_party_country", "")
+        inv_name   = p.get("invoice_to_party_name", "")
+        inv_str    = p.get("invoice_to_party_street", "")
+        inv_num    = p.get("invoice_to_party_street_number", "")
+        inv_zip    = p.get("invoice_to_party_zip", "")
+        inv_city   = p.get("invoice_to_party_city", "")
+        inv_cnt    = p.get("invoice_to_party_country", "")
         # ▼ NEUES FELD: Wert aus gt_parse lesen (Key = Feldname in der JSONL)
         # mein_feld = p.get("mein_feld", "")
 
@@ -129,6 +147,12 @@ class OrderDataset(Dataset):
         if ship_zip:   parts += f"{SHIP_ZIP_TOKEN}{ship_zip}{SHIP_ZIP_END}"
         if ship_city:  parts += f"{SHIP_CITY_TOKEN}{ship_city}{SHIP_CITY_END}"
         if ship_cnt:   parts += f"{SHIP_COUNTRY_TOKEN}{ship_cnt}{SHIP_COUNTRY_END}"
+        if inv_name:   parts += f"{INV_NAME_TOKEN}{inv_name}{INV_NAME_END}"
+        if inv_str:    parts += f"{INV_STREET_TOKEN}{inv_str}{INV_STREET_END}"
+        if inv_num:    parts += f"{INV_STREET_NUM_TOKEN}{inv_num}{INV_STREET_NUM_END}"
+        if inv_zip:    parts += f"{INV_ZIP_TOKEN}{inv_zip}{INV_ZIP_END}"
+        if inv_city:   parts += f"{INV_CITY_TOKEN}{inv_city}{INV_CITY_END}"
+        if inv_cnt:    parts += f"{INV_COUNTRY_TOKEN}{inv_cnt}{INV_COUNTRY_END}"
         # ▼ NEUES FELD: Sequenz-Block anhängen
         # if mein_feld:
         #     parts += f"{MEIN_FELD_TOKEN}{mein_feld}{MEIN_FELD_END}"
@@ -172,6 +196,12 @@ def setup_model_and_processor():
         SHIP_ZIP_TOKEN, SHIP_ZIP_END,
         SHIP_CITY_TOKEN, SHIP_CITY_END,
         SHIP_COUNTRY_TOKEN, SHIP_COUNTRY_END,
+        INV_NAME_TOKEN, INV_NAME_END,
+        INV_STREET_TOKEN, INV_STREET_END,
+        INV_STREET_NUM_TOKEN, INV_STREET_NUM_END,
+        INV_ZIP_TOKEN, INV_ZIP_END,
+        INV_CITY_TOKEN, INV_CITY_END,
+        INV_COUNTRY_TOKEN, INV_COUNTRY_END,
         # ▼ NEUES FELD: beide Tokens hier eintragen
         # MEIN_FELD_TOKEN, MEIN_FELD_END,
     ]})
