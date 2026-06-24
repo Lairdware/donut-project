@@ -24,6 +24,7 @@ _DEFAULT_MODEL  = r"C:\Users\Hyperhaven\Dev\donut_try\output\donut_orders\best_m
 COLUMNS = [
     "page",
     "position_index",
+    "continued_on_pages",
     "position_number",
     "delivery_date",
     "material",

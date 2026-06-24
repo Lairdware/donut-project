@@ -192,29 +192,51 @@ def main():
 
     doc     = pdfium.PdfDocument(args.pdf)
     results = []
+    last_position_row = None  # letzte angehängte Zeile, für Seitenumbruch-Merge
+
     for page_idx in range(len(doc)):
         page   = doc[page_idx]
         bitmap = page.render(scale=300 / 72.0, rotation=0)
         image  = bitmap.to_pil().convert("RGB")
         result = predict(image, model, processor, device)
+        positions = result["positions"]
 
-        # Eine Zeile pro Position, mit Seitenangabe
-        for pos_idx, pos in enumerate(result["positions"], 1):
+        for pos_idx, pos in enumerate(positions, 1):
+            # Erste Position einer Seite ohne position_number → vermutlich
+            # Fortsetzung der letzten Position der Vorseite (Seitenumbruch
+            # mitten in der Tabelle). Fehlende Felder dort ergänzen statt
+            # eine neue Zeile zu erzeugen.
+            is_continuation = (
+                pos_idx == 1
+                and not pos.get("position_number")
+                and last_position_row is not None
+            )
+            if is_continuation:
+                for name, _, _ in POSITION_FIELDS:
+                    if not last_position_row.get(name) and pos.get(name):
+                        last_position_row[name] = pos[name]
+                last_position_row.setdefault("continued_on_pages", [])
+                last_position_row["continued_on_pages"].append(page_idx)
+                continue
+
             row = {name: pos.get(name, "") for name, _, _ in POSITION_FIELDS}
-            row["page"]           = page_idx
-            row["position_index"] = pos_idx
-            row["confidence"]     = result["confidence"]
-            row["confidence_min"] = result["confidence_min"]
-            row["raw_output"]     = result["raw_output"]
+            row["page"]                = page_idx
+            row["position_index"]      = pos_idx
+            row["continued_on_pages"]  = []
+            row["confidence"]          = result["confidence"]
+            row["confidence_min"]      = result["confidence_min"]
+            row["raw_output"]          = result["raw_output"]
             results.append(row)
+            last_position_row = row
 
-        if not result["positions"]:
+        if not positions:
             row = {name: "" for name, _, _ in POSITION_FIELDS}
-            row["page"]           = page_idx
-            row["position_index"] = 0
-            row["confidence"]     = result["confidence"]
-            row["confidence_min"] = result["confidence_min"]
-            row["raw_output"]     = result["raw_output"]
+            row["page"]               = page_idx
+            row["position_index"]     = 0
+            row["continued_on_pages"] = []
+            row["confidence"]         = result["confidence"]
+            row["confidence_min"]     = result["confidence_min"]
+            row["raw_output"]         = result["raw_output"]
             results.append(row)
     doc.close()
 
