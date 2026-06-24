@@ -38,43 +38,42 @@ def load_labels(labels_file: Path) -> list[dict]:
             if "image" not in entry:
                 print(f"  [WARNUNG] Zeile {lineno}: 'image' fehlt, übersprungen.")
                 continue
-            # ▼ NEUES FELD: Feldname hier zur Leer-Prüfung ergänzen
-            if not entry.get("sold_to_party_name") and not entry.get("sold_to_party_city"):
-                print(f"  [WARNUNG] {entry['image']}: alle Felder leer, übersprungen.")
+            if not entry.get("positions"):
+                print(f"  [WARNUNG] {entry['image']}: keine Positionen, übersprungen.")
                 continue
 
             labels.append(entry)
     return labels
 
 
+# Felder pro Position — muss mit POSITION_FIELDS in train_donut.py /
+# inference_donut.py übereinstimmen.
+POSITION_FIELD_NAMES = [
+    "position_number",
+    "delivery_date",
+    "material",
+    "customer_material",
+    "quantity",
+    "base_unit",
+    "price_per_base",
+    "currency",
+    "price_base",
+    "net_revenue",
+    "drawing_number",
+    "drawing_number_index",
+    # ▼ NEUES FELD: Feldname hier eintragen
+    # "mein_feld",
+]
+
+
 def to_ground_truth(entry: dict) -> str:
-    """Baut die Donut-Ground-Truth-Sequenz aus einem Label-Eintrag."""
-    gt_parse = {}
-    for field in [
-        "sold_to_party_name",
-        "sold_to_party_street",
-        "sold_to_party_street_number",
-        "sold_to_party_zip",
-        "sold_to_party_city",
-        "sold_to_party_country",
-        "ship_to_party_name",
-        "ship_to_party_street",
-        "ship_to_party_street_number",
-        "ship_to_party_zip",
-        "ship_to_party_city",
-        "ship_to_party_country",
-        "invoice_to_party_name",
-        "invoice_to_party_street",
-        "invoice_to_party_street_number",
-        "invoice_to_party_zip",
-        "invoice_to_party_city",
-        "invoice_to_party_country",
-        # ▼ NEUES FELD: Feldname hier eintragen
-        # "mein_feld",
-    ]:
-        if entry.get(field):
-            gt_parse[field] = entry[field]
-    return json.dumps({"gt_parse": gt_parse}, ensure_ascii=False)
+    """Baut die Donut-Ground-Truth-Sequenz aus einem Label-Eintrag mit Positionsliste."""
+    positions = []
+    for pos in entry.get("positions", []):
+        clean = {f: pos[f] for f in POSITION_FIELD_NAMES if pos.get(f)}
+        if clean:
+            positions.append(clean)
+    return json.dumps({"gt_parse": {"positions": positions}}, ensure_ascii=False)
 
 
 def main():

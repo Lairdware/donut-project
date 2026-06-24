@@ -8,8 +8,8 @@ Aufruf:
     python tools/pdf_to_images.py --file meine.pdf   # einzelne Datei
 
 Ausgabe:
-    dataset/images/<dateiname>_p0.png   ← Seite 1
-    dataset/images/<dateiname>_p1.png   ← Seite 2  (falls mehrseitig)
+    dataset/images/<dateiname>_page1.png   ← Seite 1
+    dataset/images/<dateiname>_page2.png   ← Seite 2  (falls mehrseitig)
     ...
 
 Nach der Konvertierung:
@@ -25,19 +25,20 @@ import pypdfium2 as pdfium
 
 
 def convert_pdf(pdf_path: Path, output_dir: Path, dpi: int = 200) -> list[str]:
-    """Konvertiert Seite 1 einer PDF-Datei in ein PNG-Bild."""
+    """Konvertiert alle Seiten einer PDF-Datei in je ein PNG-Bild."""
     pdf = pdfium.PdfDocument(str(pdf_path))
     scale = dpi / 72.0
     created = []
 
-    page = pdf[0]
-    bitmap = page.render(scale=scale, rotation=0)
-    pil_img = bitmap.to_pil()
+    for page_idx in range(len(pdf)):
+        page = pdf[page_idx]
+        bitmap = page.render(scale=scale, rotation=0)
+        pil_img = bitmap.to_pil()
 
-    img_name = f"{pdf_path.stem}_p0.png"
-    img_path = output_dir / img_name
-    pil_img.save(img_path, "PNG")
-    created.append(img_name)
+        img_name = f"{pdf_path.stem}_page{page_idx + 1}.png"
+        img_path = output_dir / img_name
+        pil_img.save(img_path, "PNG")
+        created.append(img_name)
 
     pdf.close()
     return created
@@ -79,7 +80,7 @@ def main():
 
     for i, pdf_path in enumerate(pdf_files, 1):
         # Prüfen ob Bilder bereits existieren
-        first_page_img = img_dir / f"{pdf_path.stem}_p0.png"
+        first_page_img = img_dir / f"{pdf_path.stem}_page1.png"
         if first_page_img.exists() and not args.force:
             skipped += 1
             continue
@@ -115,7 +116,7 @@ def main():
     if unlabeled:
         print(f"\n⚠  {len(unlabeled)} Bilder ohne Label in dataset/labels.jsonl:")
         for name in unlabeled[:5]:
-            print(f'   {{"image": "{name}", "order_number": "", "total": ""}}')
+            print(f'   {{"image": "{name}", "positions": [{{"position_number": "", "material": ""}}]}}')
         if len(unlabeled) > 5:
             print(f"   ... und {len(unlabeled) - 5} weitere")
         print(f"\n   → Bitte dataset/labels.jsonl ergänzen, dann:")

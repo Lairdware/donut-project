@@ -1,6 +1,7 @@
 """
-Extrahiert Felder aus einer PDF und gibt das Ergebnis als JSON auf stdout aus.
-Wird von donut_client.py via subprocess aufgerufen.
+Extrahiert Positionsdaten aus einer PDF und gibt das Ergebnis als JSON
+auf stdout aus. Wird von donut_client.py via subprocess aufgerufen.
+Ein Dokument kann mehrere Positionen pro Seite enthalten.
 
 Aufruf:
     python donut_extract.py rechnung.pdf
@@ -27,43 +28,50 @@ from transformers import (
 DEFAULT_MODEL      = str(Path(__file__).parent / "output/donut_orders/best_model")
 TASK_TOKEN         = "<s_order>"
 TASK_END_TOKEN     = "</s_order>"
-NAME_TOKEN         = "<s_sold_to_party_name>"
-NAME_END           = "</s_sold_to_party_name>"
-STREET_TOKEN       = "<s_sold_to_party_street>"
-STREET_END         = "</s_sold_to_party_street>"
-STREET_NUM_TOKEN   = "<s_sold_to_party_street_number>"
-STREET_NUM_END     = "</s_sold_to_party_street_number>"
-ZIP_TOKEN          = "<s_sold_to_party_zip>"
-ZIP_END            = "</s_sold_to_party_zip>"
-CITY_TOKEN         = "<s_sold_to_party_city>"
-CITY_END           = "</s_sold_to_party_city>"
-COUNTRY_TOKEN          = "<s_sold_to_party_country>"
-COUNTRY_END            = "</s_sold_to_party_country>"
-SHIP_NAME_TOKEN        = "<s_ship_to_party_name>"
-SHIP_NAME_END          = "</s_ship_to_party_name>"
-SHIP_STREET_TOKEN      = "<s_ship_to_party_street>"
-SHIP_STREET_END        = "</s_ship_to_party_street>"
-SHIP_STREET_NUM_TOKEN  = "<s_ship_to_party_street_number>"
-SHIP_STREET_NUM_END    = "</s_ship_to_party_street_number>"
-SHIP_ZIP_TOKEN         = "<s_ship_to_party_zip>"
-SHIP_ZIP_END           = "</s_ship_to_party_zip>"
-SHIP_CITY_TOKEN        = "<s_ship_to_party_city>"
-SHIP_CITY_END          = "</s_ship_to_party_city>"
-SHIP_COUNTRY_TOKEN     = "<s_ship_to_party_country>"
-SHIP_COUNTRY_END       = "</s_ship_to_party_country>"
-INV_NAME_TOKEN         = "<s_invoice_to_party_name>"
-INV_NAME_END           = "</s_invoice_to_party_name>"
-INV_STREET_TOKEN       = "<s_invoice_to_party_street>"
-INV_STREET_END         = "</s_invoice_to_party_street>"
-INV_STREET_NUM_TOKEN   = "<s_invoice_to_party_street_number>"
-INV_STREET_NUM_END     = "</s_invoice_to_party_street_number>"
-INV_ZIP_TOKEN          = "<s_invoice_to_party_zip>"
-INV_ZIP_END            = "</s_invoice_to_party_zip>"
-INV_CITY_TOKEN         = "<s_invoice_to_party_city>"
-INV_CITY_END           = "</s_invoice_to_party_city>"
-INV_COUNTRY_TOKEN      = "<s_invoice_to_party_country>"
-INV_COUNTRY_END        = "</s_invoice_to_party_country>"
-MAX_LENGTH             = 192
+POSITION_TOKEN     = "<s_position>"
+POSITION_END       = "</s_position>"
+
+POS_NUM_TOKEN         = "<s_position_number>"
+POS_NUM_END           = "</s_position_number>"
+DELIVERY_DATE_TOKEN   = "<s_delivery_date>"
+DELIVERY_DATE_END     = "</s_delivery_date>"
+MATERIAL_TOKEN        = "<s_material>"
+MATERIAL_END          = "</s_material>"
+CUST_MATERIAL_TOKEN   = "<s_customer_material>"
+CUST_MATERIAL_END     = "</s_customer_material>"
+QUANTITY_TOKEN        = "<s_quantity>"
+QUANTITY_END          = "</s_quantity>"
+BASE_UNIT_TOKEN       = "<s_base_unit>"
+BASE_UNIT_END         = "</s_base_unit>"
+PRICE_PER_BASE_TOKEN  = "<s_price_per_base>"
+PRICE_PER_BASE_END    = "</s_price_per_base>"
+CURRENCY_TOKEN        = "<s_currency>"
+CURRENCY_END          = "</s_currency>"
+PRICE_BASE_TOKEN      = "<s_price_base>"
+PRICE_BASE_END        = "</s_price_base>"
+NET_REVENUE_TOKEN     = "<s_net_revenue>"
+NET_REVENUE_END       = "</s_net_revenue>"
+DRAWING_NUMBER_TOKEN  = "<s_drawing_number>"
+DRAWING_NUMBER_END    = "</s_drawing_number>"
+DRAWING_NUM_IDX_TOKEN = "<s_drawing_number_index>"
+DRAWING_NUM_IDX_END   = "</s_drawing_number_index>"
+
+POSITION_FIELDS = [
+    ("position_number",      POS_NUM_TOKEN,         POS_NUM_END),
+    ("delivery_date",        DELIVERY_DATE_TOKEN,   DELIVERY_DATE_END),
+    ("material",             MATERIAL_TOKEN,        MATERIAL_END),
+    ("customer_material",    CUST_MATERIAL_TOKEN,   CUST_MATERIAL_END),
+    ("quantity",              QUANTITY_TOKEN,        QUANTITY_END),
+    ("base_unit",             BASE_UNIT_TOKEN,       BASE_UNIT_END),
+    ("price_per_base",        PRICE_PER_BASE_TOKEN,  PRICE_PER_BASE_END),
+    ("currency",               CURRENCY_TOKEN,        CURRENCY_END),
+    ("price_base",             PRICE_BASE_TOKEN,      PRICE_BASE_END),
+    ("net_revenue",            NET_REVENUE_TOKEN,     NET_REVENUE_END),
+    ("drawing_number",         DRAWING_NUMBER_TOKEN,  DRAWING_NUMBER_END),
+    ("drawing_number_index",   DRAWING_NUM_IDX_TOKEN, DRAWING_NUM_IDX_END),
+]
+
+MAX_LENGTH = 768
 
 
 class StopOnTaskEnd(StoppingCriteria):
@@ -77,16 +85,23 @@ class StopOnTaskEnd(StoppingCriteria):
 def _geo_mean(probs: list[float]) -> float:
     if not probs:
         return 0.0
-    return math.exp(sum(math.log(max(p, 1e-10)) for p in probs) / len(probs))
+    result = math.exp(sum(math.log(max(p, 1e-10)) for p in probs) / len(probs))
+    return result if math.isfinite(result) else 0.0
 
 
-def parse_output(token_sequence: str) -> dict:
-    result = {}
+def parse_output(token_sequence: str) -> list[dict]:
     outer = re.search(r"<s_order>(.*?)</s_order>", token_sequence, re.DOTALL)
     inner = outer.group(1) if outer else token_sequence
-    for match in re.finditer(r"<s_(\w+)>(.*?)</s_\1>", inner, re.DOTALL):
-        result[match.group(1)] = " ".join(match.group(2).split())
-    return result
+
+    positions = []
+    for pos_match in re.finditer(r"<s_position>(.*?)</s_position>", inner, re.DOTALL):
+        pos_content = pos_match.group(1)
+        pos_dict = {}
+        for match in re.finditer(r"<s_(\w+)>(.*?)</s_\1>", pos_content, re.DOTALL):
+            pos_dict[match.group(1)] = " ".join(match.group(2).split())
+        if pos_dict:
+            positions.append(pos_dict)
+    return positions
 
 
 def load_model(model_path: str):
@@ -131,31 +146,16 @@ def predict(image: Image.Image, model, processor, device) -> dict:
     seq_str = seq_str.replace(processor.tokenizer.pad_token, "")
     seq_str = re.sub(r"(<s_\w+>)\s+", r"\1", seq_str)
 
-    parsed = parse_output(seq_str)
+    positions = parse_output(seq_str)
 
-    # Konfidenz
+    # Dokument-Konfidenz
     tok = processor.tokenizer
-    structural_ids = set(tok.convert_tokens_to_ids([
-        TASK_TOKEN, TASK_END_TOKEN,
-        NAME_TOKEN, NAME_END,
-        STREET_TOKEN, STREET_END,
-        STREET_NUM_TOKEN, STREET_NUM_END,
-        ZIP_TOKEN, ZIP_END,
-        CITY_TOKEN, CITY_END,
-        COUNTRY_TOKEN, COUNTRY_END,
-        SHIP_NAME_TOKEN, SHIP_NAME_END,
-        SHIP_STREET_TOKEN, SHIP_STREET_END,
-        SHIP_STREET_NUM_TOKEN, SHIP_STREET_NUM_END,
-        SHIP_ZIP_TOKEN, SHIP_ZIP_END,
-        SHIP_CITY_TOKEN, SHIP_CITY_END,
-        SHIP_COUNTRY_TOKEN, SHIP_COUNTRY_END,
-        INV_NAME_TOKEN, INV_NAME_END,
-        INV_STREET_TOKEN, INV_STREET_END,
-        INV_STREET_NUM_TOKEN, INV_STREET_NUM_END,
-        INV_ZIP_TOKEN, INV_ZIP_END,
-        INV_CITY_TOKEN, INV_CITY_END,
-        INV_COUNTRY_TOKEN, INV_COUNTRY_END,
-    ]))
+    structural_ids = {tok.convert_tokens_to_ids(t) for t in
+                      [TASK_TOKEN, TASK_END_TOKEN, POSITION_TOKEN, POSITION_END]}
+    for _, start_tok, end_tok in POSITION_FIELDS:
+        structural_ids.add(tok.convert_tokens_to_ids(start_tok))
+        structural_ids.add(tok.convert_tokens_to_ids(end_tok))
+
     generated_ids = outputs.sequences[0][1:].tolist()
     per_token_probs = []
     for step, step_scores in enumerate(outputs.scores):
@@ -166,29 +166,15 @@ def predict(image: Image.Image, model, processor, device) -> dict:
         per_token_probs.append((tok_id, prob))
 
     skip_ids = structural_ids | {tok.eos_token_id, tok.pad_token_id}
-    doc_conf = round(_geo_mean([p for tid, p in per_token_probs if tid not in skip_ids]), 4)
+    content_probs = [p for tid, p in per_token_probs if tid not in skip_ids]
+    doc_conf     = round(_geo_mean(content_probs), 4)
+    doc_min_conf = round(min(content_probs), 4) if content_probs else 0.0
 
     return {
-        "sold_to_party_name":              parsed.get("sold_to_party_name", ""),
-        "sold_to_party_street":            parsed.get("sold_to_party_street", ""),
-        "sold_to_party_street_number":     parsed.get("sold_to_party_street_number", ""),
-        "sold_to_party_zip":               parsed.get("sold_to_party_zip", ""),
-        "sold_to_party_city":              parsed.get("sold_to_party_city", ""),
-        "sold_to_party_country":           parsed.get("sold_to_party_country", ""),
-        "ship_to_party_name":              parsed.get("ship_to_party_name", ""),
-        "ship_to_party_street":            parsed.get("ship_to_party_street", ""),
-        "ship_to_party_street_number":     parsed.get("ship_to_party_street_number", ""),
-        "ship_to_party_zip":               parsed.get("ship_to_party_zip", ""),
-        "ship_to_party_city":              parsed.get("ship_to_party_city", ""),
-        "ship_to_party_country":           parsed.get("ship_to_party_country", ""),
-        "invoice_to_party_name":           parsed.get("invoice_to_party_name", ""),
-        "invoice_to_party_street":         parsed.get("invoice_to_party_street", ""),
-        "invoice_to_party_street_number":  parsed.get("invoice_to_party_street_number", ""),
-        "invoice_to_party_zip":            parsed.get("invoice_to_party_zip", ""),
-        "invoice_to_party_city":           parsed.get("invoice_to_party_city", ""),
-        "invoice_to_party_country":        parsed.get("invoice_to_party_country", ""),
-        "confidence":                      doc_conf,
-        "raw_output":                      seq_str.strip(),
+        "positions":    positions,
+        "confidence":     doc_conf,
+        "confidence_min": doc_min_conf,
+        "raw_output":     seq_str.strip(),
     }
 
 
@@ -211,8 +197,25 @@ def main():
         bitmap = page.render(scale=300 / 72.0, rotation=0)
         image  = bitmap.to_pil().convert("RGB")
         result = predict(image, model, processor, device)
-        result["page"] = page_idx
-        results.append(result)
+
+        # Eine Zeile pro Position, mit Seitenangabe
+        for pos_idx, pos in enumerate(result["positions"], 1):
+            row = {name: pos.get(name, "") for name, _, _ in POSITION_FIELDS}
+            row["page"]           = page_idx
+            row["position_index"] = pos_idx
+            row["confidence"]     = result["confidence"]
+            row["confidence_min"] = result["confidence_min"]
+            row["raw_output"]     = result["raw_output"]
+            results.append(row)
+
+        if not result["positions"]:
+            row = {name: "" for name, _, _ in POSITION_FIELDS}
+            row["page"]           = page_idx
+            row["position_index"] = 0
+            row["confidence"]     = result["confidence"]
+            row["confidence_min"] = result["confidence_min"]
+            row["raw_output"]     = result["raw_output"]
+            results.append(row)
     doc.close()
 
     print(json.dumps(results, ensure_ascii=False))

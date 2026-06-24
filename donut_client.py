@@ -6,7 +6,8 @@ Verwendung in einem anderen Projekt:
     df = extract_from_pdf(r"C:\Rechnungen\rechnung.pdf")
     print(df)
 
-Gibt einen pandas DataFrame zurück mit einer Zeile pro PDF-Seite.
+Gibt einen pandas DataFrame zurück mit einer Zeile pro Position
+(eine PDF-Seite kann mehrere Positionen/Zeilen enthalten).
 """
 
 import json
@@ -22,40 +23,37 @@ _DEFAULT_MODEL  = r"C:\Users\Hyperhaven\Dev\donut_try\output\donut_orders\best_m
 
 COLUMNS = [
     "page",
-    "sold_to_party_name",
-    "sold_to_party_street",
-    "sold_to_party_street_number",
-    "sold_to_party_zip",
-    "sold_to_party_city",
-    "sold_to_party_country",
-    "ship_to_party_name",
-    "ship_to_party_street",
-    "ship_to_party_street_number",
-    "ship_to_party_zip",
-    "ship_to_party_city",
-    "ship_to_party_country",
-    "invoice_to_party_name",
-    "invoice_to_party_street",
-    "invoice_to_party_street_number",
-    "invoice_to_party_zip",
-    "invoice_to_party_city",
-    "invoice_to_party_country",
+    "position_index",
+    "position_number",
+    "delivery_date",
+    "material",
+    "customer_material",
+    "quantity",
+    "base_unit",
+    "price_per_base",
+    "currency",
+    "price_base",
+    "net_revenue",
+    "drawing_number",
+    "drawing_number_index",
     "confidence",
+    "confidence_min",
     "raw_output",
 ]
 
 
 def extract_from_pdf(pdf_path: str, model_path: str = _DEFAULT_MODEL) -> pd.DataFrame:
     """
-    Extrahiert Adressfelder aus einer PDF mit dem trainierten Donut-Modell.
+    Extrahiert Positionsdaten aus einer PDF mit dem trainierten Donut-Modell.
 
     Args:
         pdf_path:   Pfad zur PDF-Datei
         model_path: Pfad zum trainierten Modell (Standard: best_model)
 
     Returns:
-        DataFrame mit einer Zeile pro Seite und den extrahierten Feldern.
-        Leere Spalten wenn ein Feld nicht gefunden wurde.
+        DataFrame mit einer Zeile pro Position. Wenn eine Seite keine
+        Position enthält, gibt es trotzdem eine Zeile mit leeren Feldern
+        (position_index=0), damit keine Seite "verschwindet".
     """
     pdf_path = str(Path(pdf_path).resolve())
 

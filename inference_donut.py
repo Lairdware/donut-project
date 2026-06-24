@@ -1,5 +1,7 @@
 """
-Donut Inferenz — extrahiert Felder aus Dokument-Bildern inkl. Konfidenz.
+Donut Inferenz — extrahiert Positionsdaten (Tabellenzeilen) aus
+Dokument-Bildern inkl. Konfidenz. Ein Dokument kann mehrere Positionen
+enthalten.
 
 Aufruf:
     python inference_donut.py --image pfad/zum/bild.png
@@ -33,53 +35,62 @@ from transformers import (
 # ---------------------------------------------------------------------------
 # Konfiguration (muss mit train_donut.py übereinstimmen)
 # ---------------------------------------------------------------------------
-DEFAULT_MODEL          = "output/donut_orders/best_model"
-TASK_TOKEN             = "<s_order>"
-TASK_END_TOKEN         = "</s_order>"
-NAME_TOKEN             = "<s_sold_to_party_name>"
-NAME_END               = "</s_sold_to_party_name>"
-STREET_TOKEN           = "<s_sold_to_party_street>"
-STREET_END             = "</s_sold_to_party_street>"
-STREET_NUM_TOKEN       = "<s_sold_to_party_street_number>"
-STREET_NUM_END         = "</s_sold_to_party_street_number>"
-ZIP_TOKEN              = "<s_sold_to_party_zip>"
-ZIP_END                = "</s_sold_to_party_zip>"
-CITY_TOKEN             = "<s_sold_to_party_city>"
-CITY_END               = "</s_sold_to_party_city>"
-COUNTRY_TOKEN          = "<s_sold_to_party_country>"
-COUNTRY_END            = "</s_sold_to_party_country>"
-SHIP_NAME_TOKEN        = "<s_ship_to_party_name>"
-SHIP_NAME_END          = "</s_ship_to_party_name>"
-SHIP_STREET_TOKEN      = "<s_ship_to_party_street>"
-SHIP_STREET_END        = "</s_ship_to_party_street>"
-SHIP_STREET_NUM_TOKEN  = "<s_ship_to_party_street_number>"
-SHIP_STREET_NUM_END    = "</s_ship_to_party_street_number>"
-SHIP_ZIP_TOKEN         = "<s_ship_to_party_zip>"
-SHIP_ZIP_END           = "</s_ship_to_party_zip>"
-SHIP_CITY_TOKEN        = "<s_ship_to_party_city>"
-SHIP_CITY_END          = "</s_ship_to_party_city>"
-SHIP_COUNTRY_TOKEN     = "<s_ship_to_party_country>"
-SHIP_COUNTRY_END       = "</s_ship_to_party_country>"
-INV_NAME_TOKEN         = "<s_invoice_to_party_name>"
-INV_NAME_END           = "</s_invoice_to_party_name>"
-INV_STREET_TOKEN       = "<s_invoice_to_party_street>"
-INV_STREET_END         = "</s_invoice_to_party_street>"
-INV_STREET_NUM_TOKEN   = "<s_invoice_to_party_street_number>"
-INV_STREET_NUM_END     = "</s_invoice_to_party_street_number>"
-INV_ZIP_TOKEN          = "<s_invoice_to_party_zip>"
-INV_ZIP_END            = "</s_invoice_to_party_zip>"
-INV_CITY_TOKEN         = "<s_invoice_to_party_city>"
-INV_CITY_END           = "</s_invoice_to_party_city>"
-INV_COUNTRY_TOKEN      = "<s_invoice_to_party_country>"
-INV_COUNTRY_END        = "</s_invoice_to_party_country>"
+DEFAULT_MODEL      = "output/donut_orders/best_model"
+TASK_TOKEN         = "<s_order>"
+TASK_END_TOKEN     = "</s_order>"
+POSITION_TOKEN     = "<s_position>"
+POSITION_END       = "</s_position>"
+
+POS_NUM_TOKEN         = "<s_position_number>"
+POS_NUM_END           = "</s_position_number>"
+DELIVERY_DATE_TOKEN   = "<s_delivery_date>"
+DELIVERY_DATE_END     = "</s_delivery_date>"
+MATERIAL_TOKEN        = "<s_material>"
+MATERIAL_END          = "</s_material>"
+CUST_MATERIAL_TOKEN   = "<s_customer_material>"
+CUST_MATERIAL_END     = "</s_customer_material>"
+QUANTITY_TOKEN        = "<s_quantity>"
+QUANTITY_END          = "</s_quantity>"
+BASE_UNIT_TOKEN       = "<s_base_unit>"
+BASE_UNIT_END         = "</s_base_unit>"
+PRICE_PER_BASE_TOKEN  = "<s_price_per_base>"
+PRICE_PER_BASE_END    = "</s_price_per_base>"
+CURRENCY_TOKEN        = "<s_currency>"
+CURRENCY_END          = "</s_currency>"
+PRICE_BASE_TOKEN      = "<s_price_base>"
+PRICE_BASE_END        = "</s_price_base>"
+NET_REVENUE_TOKEN     = "<s_net_revenue>"
+NET_REVENUE_END       = "</s_net_revenue>"
+DRAWING_NUMBER_TOKEN  = "<s_drawing_number>"
+DRAWING_NUMBER_END    = "</s_drawing_number>"
+DRAWING_NUM_IDX_TOKEN = "<s_drawing_number_index>"
+DRAWING_NUM_IDX_END   = "</s_drawing_number_index>"
 # ▼ NEUES FELD: Tokens hier definieren (muss mit train_donut.py übereinstimmen)
 # MEIN_FELD_TOKEN = "<s_mein_feld>"
 # MEIN_FELD_END   = "</s_mein_feld>"
-MAX_LENGTH             = 192
-CONFIDENCE_HIGH        = 0.85
-CONFIDENCE_LOW         = 0.50
-IMAGE_EXTENSIONS       = {".png", ".jpg", ".jpeg", ".tiff", ".bmp", ".webp"}
-MISSING_LABEL          = "—"
+
+# Reihenfolge + Tokens der Positionsfelder — an einer Stelle gepflegt.
+POSITION_FIELDS = [
+    ("position_number",      POS_NUM_TOKEN,         POS_NUM_END),
+    ("delivery_date",        DELIVERY_DATE_TOKEN,   DELIVERY_DATE_END),
+    ("material",             MATERIAL_TOKEN,        MATERIAL_END),
+    ("customer_material",    CUST_MATERIAL_TOKEN,   CUST_MATERIAL_END),
+    ("quantity",              QUANTITY_TOKEN,        QUANTITY_END),
+    ("base_unit",             BASE_UNIT_TOKEN,       BASE_UNIT_END),
+    ("price_per_base",        PRICE_PER_BASE_TOKEN,  PRICE_PER_BASE_END),
+    ("currency",               CURRENCY_TOKEN,        CURRENCY_END),
+    ("price_base",             PRICE_BASE_TOKEN,      PRICE_BASE_END),
+    ("net_revenue",            NET_REVENUE_TOKEN,     NET_REVENUE_END),
+    ("drawing_number",         DRAWING_NUMBER_TOKEN,  DRAWING_NUMBER_END),
+    ("drawing_number_index",   DRAWING_NUM_IDX_TOKEN, DRAWING_NUM_IDX_END),
+    # ▼ NEUES FELD: ("mein_feld", MEIN_FELD_TOKEN, MEIN_FELD_END),
+]
+
+MAX_LENGTH         = 768
+CONFIDENCE_HIGH    = 0.85
+CONFIDENCE_LOW     = 0.50
+IMAGE_EXTENSIONS   = {".png", ".jpg", ".jpeg", ".tiff", ".bmp", ".webp"}
+MISSING_LABEL      = "—"
 
 
 # ---------------------------------------------------------------------------
@@ -96,29 +107,19 @@ def compute_confidences(sequences: torch.Tensor, scores: tuple,
                         processor: DonutProcessor) -> dict:
     tok = processor.tokenizer
 
-    structural_ids = set(tok.convert_tokens_to_ids([
-        TASK_TOKEN, TASK_END_TOKEN,
-        NAME_TOKEN, NAME_END,
-        STREET_TOKEN, STREET_END,
-        STREET_NUM_TOKEN, STREET_NUM_END,
-        ZIP_TOKEN, ZIP_END,
-        CITY_TOKEN, CITY_END,
-        COUNTRY_TOKEN, COUNTRY_END,
-        SHIP_NAME_TOKEN, SHIP_NAME_END,
-        SHIP_STREET_TOKEN, SHIP_STREET_END,
-        SHIP_STREET_NUM_TOKEN, SHIP_STREET_NUM_END,
-        SHIP_ZIP_TOKEN, SHIP_ZIP_END,
-        SHIP_CITY_TOKEN, SHIP_CITY_END,
-        SHIP_COUNTRY_TOKEN, SHIP_COUNTRY_END,
-        INV_NAME_TOKEN, INV_NAME_END,
-        INV_STREET_TOKEN, INV_STREET_END,
-        INV_STREET_NUM_TOKEN, INV_STREET_NUM_END,
-        INV_ZIP_TOKEN, INV_ZIP_END,
-        INV_CITY_TOKEN, INV_CITY_END,
-        INV_COUNTRY_TOKEN, INV_COUNTRY_END,
-        # ▼ NEUES FELD: beide Tokens eintragen damit sie nicht als Inhalt gewertet werden
-        # MEIN_FELD_TOKEN, MEIN_FELD_END,
-    ]))
+    field_start_map = {tok.convert_tokens_to_ids(start_tok): name
+                       for name, start_tok, _ in POSITION_FIELDS}
+    field_end_ids    = {tok.convert_tokens_to_ids(end_tok)
+                       for _, _, end_tok in POSITION_FIELDS}
+    position_start_id = tok.convert_tokens_to_ids(POSITION_TOKEN)
+    position_end_id    = tok.convert_tokens_to_ids(POSITION_END)
+
+    structural_ids = set(field_start_map.keys()) | field_end_ids | {
+        tok.convert_tokens_to_ids(TASK_TOKEN),
+        tok.convert_tokens_to_ids(TASK_END_TOKEN),
+        position_start_id,
+        position_end_id,
+    }
     structural_ids.discard(tok.unk_token_id)
 
     generated_ids = sequences[0][1:].tolist()
@@ -135,70 +136,34 @@ def compute_confidences(sequences: torch.Tensor, scores: tuple,
             "prob":  prob,
         })
 
-    # Feld-Konfidenzen
-    field_start_map = {
-        tok.convert_tokens_to_ids(NAME_TOKEN):            "sold_to_party_name",
-        tok.convert_tokens_to_ids(STREET_TOKEN):          "sold_to_party_street",
-        tok.convert_tokens_to_ids(STREET_NUM_TOKEN):      "sold_to_party_street_number",
-        tok.convert_tokens_to_ids(ZIP_TOKEN):             "sold_to_party_zip",
-        tok.convert_tokens_to_ids(CITY_TOKEN):            "sold_to_party_city",
-        tok.convert_tokens_to_ids(COUNTRY_TOKEN):         "sold_to_party_country",
-        tok.convert_tokens_to_ids(SHIP_NAME_TOKEN):       "ship_to_party_name",
-        tok.convert_tokens_to_ids(SHIP_STREET_TOKEN):     "ship_to_party_street",
-        tok.convert_tokens_to_ids(SHIP_STREET_NUM_TOKEN): "ship_to_party_street_number",
-        tok.convert_tokens_to_ids(SHIP_ZIP_TOKEN):        "ship_to_party_zip",
-        tok.convert_tokens_to_ids(SHIP_CITY_TOKEN):       "ship_to_party_city",
-        tok.convert_tokens_to_ids(SHIP_COUNTRY_TOKEN):    "ship_to_party_country",
-        tok.convert_tokens_to_ids(INV_NAME_TOKEN):         "invoice_to_party_name",
-        tok.convert_tokens_to_ids(INV_STREET_TOKEN):       "invoice_to_party_street",
-        tok.convert_tokens_to_ids(INV_STREET_NUM_TOKEN):   "invoice_to_party_street_number",
-        tok.convert_tokens_to_ids(INV_ZIP_TOKEN):          "invoice_to_party_zip",
-        tok.convert_tokens_to_ids(INV_CITY_TOKEN):         "invoice_to_party_city",
-        tok.convert_tokens_to_ids(INV_COUNTRY_TOKEN):      "invoice_to_party_country",
-        # ▼ NEUES FELD: Start-Token → Feldname (Key muss mit parse_output übereinstimmen)
-        # tok.convert_tokens_to_ids(MEIN_FELD_TOKEN): "mein_feld",
-    }
-    field_end_ids = {
-        tok.convert_tokens_to_ids(NAME_END),
-        tok.convert_tokens_to_ids(STREET_END),
-        tok.convert_tokens_to_ids(STREET_NUM_END),
-        tok.convert_tokens_to_ids(ZIP_END),
-        tok.convert_tokens_to_ids(CITY_END),
-        tok.convert_tokens_to_ids(COUNTRY_END),
-        tok.convert_tokens_to_ids(SHIP_NAME_END),
-        tok.convert_tokens_to_ids(SHIP_STREET_END),
-        tok.convert_tokens_to_ids(SHIP_STREET_NUM_END),
-        tok.convert_tokens_to_ids(SHIP_ZIP_END),
-        tok.convert_tokens_to_ids(SHIP_CITY_END),
-        tok.convert_tokens_to_ids(SHIP_COUNTRY_END),
-        tok.convert_tokens_to_ids(INV_NAME_END),
-        tok.convert_tokens_to_ids(INV_STREET_END),
-        tok.convert_tokens_to_ids(INV_STREET_NUM_END),
-        tok.convert_tokens_to_ids(INV_ZIP_END),
-        tok.convert_tokens_to_ids(INV_CITY_END),
-        tok.convert_tokens_to_ids(INV_COUNTRY_END),
-        tok.convert_tokens_to_ids(TASK_END_TOKEN),
-        # ▼ NEUES FELD: End-Token eintragen
-        # tok.convert_tokens_to_ids(MEIN_FELD_END),
-    }
-
+    # Konfidenz pro Position (eine Liste von {feld: konfidenz}-Dicts,
+    # parallel zu parse_output's Rückgabe-Liste)
+    positions_confidence: list[dict] = []
+    current_position_probs: Optional[dict] = None
     current_field: Optional[str] = None
-    field_probs: dict[str, list[float]] = {}
 
     for item in per_token:
         tid = item["id"]
-        if tid in field_start_map:
+        if tid == position_start_id:
+            current_position_probs = {}
+            current_field = None
+        elif tid == position_end_id:
+            if current_position_probs is not None:
+                positions_confidence.append({
+                    f: round(_geo_mean(probs), 4)
+                    for f, probs in current_position_probs.items()
+                })
+            current_position_probs = None
+            current_field = None
+        elif tid in field_start_map:
             current_field = field_start_map[tid]
-            field_probs.setdefault(current_field, [])
+            if current_position_probs is not None:
+                current_position_probs.setdefault(current_field, [])
         elif tid in field_end_ids:
             current_field = None
-        elif current_field is not None and tid not in structural_ids:
-            field_probs[current_field].append(item["prob"])
-
-    field_confidences = {
-        field: round(_geo_mean(probs), 4)
-        for field, probs in field_probs.items()
-    }
+        elif (current_field is not None and current_position_probs is not None
+              and tid not in structural_ids):
+            current_position_probs[current_field].append(item["prob"])
 
     skip_ids = structural_ids | {tok.eos_token_id, tok.pad_token_id}
     content_probs = [item["prob"] for item in per_token if item["id"] not in skip_ids]
@@ -208,7 +173,7 @@ def compute_confidences(sequences: torch.Tensor, scores: tuple,
     return {
         "document":     doc_conf,
         "document_min": doc_min_conf,
-        "fields":       field_confidences,
+        "positions":    positions_confidence,
         "per_token":    [{"token": t["token"], "prob": round(t["prob"], 4)}
                          for t in per_token],
     }
@@ -266,15 +231,22 @@ def load_model(model_path: str):
 
 
 # ---------------------------------------------------------------------------
-# Parser
+# Parser — gibt eine Liste von Positionen zurück (ein Dokument = mehrere
+# Positionen möglich)
 # ---------------------------------------------------------------------------
-def parse_output(token_sequence: str) -> dict:
-    result = {}
+def parse_output(token_sequence: str) -> list[dict]:
     outer = re.search(r"<s_order>(.*?)</s_order>", token_sequence, re.DOTALL)
     inner = outer.group(1) if outer else token_sequence
-    for match in re.finditer(r"<s_(\w+)>(.*?)</s_\1>", inner, re.DOTALL):
-        result[match.group(1)] = " ".join(match.group(2).split())
-    return result
+
+    positions = []
+    for pos_match in re.finditer(r"<s_position>(.*?)</s_position>", inner, re.DOTALL):
+        pos_content = pos_match.group(1)
+        pos_dict = {}
+        for match in re.finditer(r"<s_(\w+)>(.*?)</s_\1>", pos_content, re.DOTALL):
+            pos_dict[match.group(1)] = " ".join(match.group(2).split())
+        if pos_dict:
+            positions.append(pos_dict)
+    return positions
 
 
 # ---------------------------------------------------------------------------
@@ -312,12 +284,12 @@ def predict_single(image_path: str, model, processor, device,
     seq_str = seq_str.replace(processor.tokenizer.pad_token, "")
     seq_str = re.sub(r"(<s_\w+>)\s+", r"\1", seq_str)
 
-    parsed     = parse_output(seq_str)
+    positions  = parse_output(seq_str)
     confidence = compute_confidences(outputs.sequences, outputs.scores, processor)
 
     return {
         "raw_output": seq_str.strip(),
-        "parsed":     parsed,
+        "positions":  positions,
         "confidence": confidence,
     }
 
@@ -335,9 +307,6 @@ def process_directory(dir_path: str, model, processor, device) -> list:
         return []
 
     print(f"{len(images)} Bilder. Starte Inferenz ...\n")
-    hdr = f"{'#':<5} {'Datei':<28} {'Sold-to Party':<30} {'Stadt':<20} {'Land':<16} {'Konf':>6}  Status"
-    print(hdr)
-    print("-" * len(hdr))
 
     results = []
     for i, img_path in enumerate(images, 1):
@@ -345,68 +314,29 @@ def process_directory(dir_path: str, model, processor, device) -> list:
         result  = predict_single(str(img_path), model, processor, device)
         elapsed = time.time() - t0
 
-        parsed   = result["parsed"]
+        positions    = result["positions"]
         doc_conf     = result["confidence"]["document"]
         doc_min_conf = result["confidence"]["document_min"]
         status       = confidence_label(doc_conf)
 
-        sold_to    = parsed.get("sold_to_party_name",               MISSING_LABEL)
-        street     = parsed.get("sold_to_party_street",            MISSING_LABEL)
-        street_num = parsed.get("sold_to_party_street_number",     MISSING_LABEL)
-        zip_code   = parsed.get("sold_to_party_zip",               MISSING_LABEL)
-        city       = parsed.get("sold_to_party_city",              MISSING_LABEL)
-        country    = parsed.get("sold_to_party_country",           MISSING_LABEL)
-        ship_name  = parsed.get("ship_to_party_name",              MISSING_LABEL)
-        ship_str   = parsed.get("ship_to_party_street",            MISSING_LABEL)
-        ship_num   = parsed.get("ship_to_party_street_number",     MISSING_LABEL)
-        ship_zip   = parsed.get("ship_to_party_zip",               MISSING_LABEL)
-        ship_city  = parsed.get("ship_to_party_city",              MISSING_LABEL)
-        ship_cnt   = parsed.get("ship_to_party_country",           MISSING_LABEL)
-        inv_name   = parsed.get("invoice_to_party_name",           MISSING_LABEL)
-        inv_str    = parsed.get("invoice_to_party_street",         MISSING_LABEL)
-        inv_num    = parsed.get("invoice_to_party_street_number",  MISSING_LABEL)
-        inv_zip    = parsed.get("invoice_to_party_zip",            MISSING_LABEL)
-        inv_city   = parsed.get("invoice_to_party_city",           MISSING_LABEL)
-        inv_cnt    = parsed.get("invoice_to_party_country",        MISSING_LABEL)
-        # ▼ NEUES FELD: Wert aus parsed holen (Key = Feldname aus field_start_map)
-        # mein_feld = parsed.get("mein_feld", MISSING_LABEL)
+        print(f"[{i}/{len(images)}] {img_path.name}  "
+              f"{len(positions)} Position(en)  "
+              f"avg={doc_conf:>5.1%} min={doc_min_conf:>5.1%}  [{status}]  ({elapsed:.2f}s)")
+        for p_idx, pos in enumerate(positions, 1):
+            vals = "  ".join(f"{name}={pos.get(name, MISSING_LABEL)}"
+                             for name, _, _ in POSITION_FIELDS if pos.get(name))
+            print(f"    Pos {p_idx}: {vals}")
+        print(f"    RAW: {result['raw_output']}")
 
-        print(
-            f"{i:<5} {img_path.name:<28} {sold_to:<30} {city:<20} {country:<16} "
-            f"avg={doc_conf:>5.1%} min={doc_min_conf:>5.1%}  [{status}]  ({elapsed:.2f}s)"
-        )
-        print(f"      RAW: {result['raw_output']}")
-
-        conf_fields = result["confidence"]["fields"]
         results.append({
-            "file":                                    img_path.name,
-            "sold_to_party_name":                      sold_to,
-            "sold_to_party_street":                    street,
-            "sold_to_party_street_number":             street_num,
-            "sold_to_party_zip":                       zip_code,
-            "sold_to_party_city":                      city,
-            "sold_to_party_country":                   country,
-            "ship_to_party_name":                      ship_name,
-            "ship_to_party_street":                    ship_str,
-            "ship_to_party_street_number":             ship_num,
-            "ship_to_party_zip":                       ship_zip,
-            "ship_to_party_city":                      ship_city,
-            "ship_to_party_country":                   ship_cnt,
-            "invoice_to_party_name":                   inv_name,
-            "invoice_to_party_street":                 inv_str,
-            "invoice_to_party_street_number":          inv_num,
-            "invoice_to_party_zip":                    inv_zip,
-            "invoice_to_party_city":                   inv_city,
-            "invoice_to_party_country":                inv_cnt,
-            # ▼ NEUES FELD: Wert und Konfidenz ins Ergebnis-Dict eintragen
-            # "mein_feld":                             mein_feld,
-            # "confidence_mein_feld":                  conf_fields.get("mein_feld", 0.0),
-            "confidence_document":                     doc_conf,
-            "confidence_sold_to_party_name":           conf_fields.get("sold_to_party_name", 0.0),
-            "confidence_ship_to_party_name":           conf_fields.get("ship_to_party_name", 0.0),
-            "confidence_label":                        status,
-            "raw_output":                              result["raw_output"],
-            "time_s":                                  round(elapsed, 3),
+            "file":           img_path.name,
+            "positions":      positions,
+            "confidence":     result["confidence"]["positions"],
+            "confidence_document":     doc_conf,
+            "confidence_document_min": doc_min_conf,
+            "confidence_label":        status,
+            "raw_output":              result["raw_output"],
+            "time_s":                  round(elapsed, 3),
         })
 
     return results
@@ -417,97 +347,84 @@ def process_directory(dir_path: str, model, processor, device) -> list:
 # ---------------------------------------------------------------------------
 def _parse_label_entry(entry: dict) -> dict:
     """Normalisiert beide JSONL-Formate auf ein einheitliches Dict."""
-    # Format 1 (dataset/labels.jsonl): {"image": "...", "sold_to_party_name": "...", ...}
-    if "image" in entry or not "ground_truth" in entry:
+    # Format 1 (dataset/labels.jsonl): {"image": "...", "positions": [...]}
+    if "image" in entry or "ground_truth" not in entry:
         result = dict(entry)
         result.setdefault("image", entry.get("file_name", ""))
+        result.setdefault("positions", entry.get("positions", []))
         return result
     # Format 2 (data/val/metadata.jsonl): {"file_name": "...", "ground_truth": "{\"gt_parse\": {...}}"}
-    result = json.loads(entry["ground_truth"]).get("gt_parse", {})
-    result["image"] = entry.get("file_name", "")
-    return result
+    parsed = json.loads(entry["ground_truth"]).get("gt_parse", {})
+    return {"image": entry.get("file_name", ""), "positions": parsed.get("positions", [])}
+
+
+def _normalize_value(v) -> str:
+    return " ".join(str(v).split())
 
 
 def evaluate(labels_file: str, img_dir: str, model, processor, device):
     with open(labels_file, encoding="utf-8") as f:
         labels = [_parse_label_entry(json.loads(l)) for l in f if l.strip()]
 
-    FIELDS = [
-        "sold_to_party_name",
-        "sold_to_party_street",
-        "sold_to_party_street_number",
-        "sold_to_party_zip",
-        "sold_to_party_city",
-        "sold_to_party_country",
-        "ship_to_party_name",
-        "ship_to_party_street",
-        "ship_to_party_street_number",
-        "ship_to_party_zip",
-        "ship_to_party_city",
-        "ship_to_party_country",
-        "invoice_to_party_name",
-        "invoice_to_party_street",
-        "invoice_to_party_street_number",
-        "invoice_to_party_zip",
-        "invoice_to_party_city",
-        "invoice_to_party_country",
-    ]
-    # correct[f] = (richtig, gesamt) — nur Einträge wo GT nicht leer ist
-    correct = {f: [0, 0] for f in FIELDS}
-    correct_all = 0
-    n = 0
+    field_names = [name for name, _, _ in POSITION_FIELDS]
+    correct = {f: [0, 0] for f in field_names}   # [hits, total]
+    n_docs        = 0
+    n_pos_correct = 0
+    n_pos_total   = 0
 
     print(f"{len(labels)} Labels. Starte Evaluation ...\n")
 
     for entry in labels:
-        img_name = entry.get("image") or entry.get("file_name", "")
+        img_name = entry["image"]
         img_path = Path(img_dir) / img_name
         if not img_path.exists():
             print(f"  [NICHT GEFUNDEN] {img_path}")
             continue
 
-        result = predict_single(str(img_path), model, processor, device)
-        parsed = result["parsed"]
+        result   = predict_single(str(img_path), model, processor, device)
+        pred_pos = result["positions"]
+        gt_pos   = [
+            {k: _normalize_value(v) for k, v in p.items() if v}
+            for p in entry["positions"]
+        ]
 
-        pred = {f: parsed.get(f, "")                    for f in FIELDS}
-        gt   = {f: " ".join(entry.get(f, "").split())   for f in FIELDS}
+        n_docs += 1
+        print(f"  {img_name}  ({len(gt_pos)} GT-Positionen, {len(pred_pos)} gefunden)")
 
-        # Nur Felder zählen die im Label tatsächlich befüllt sind.
-        # Leeres GT + leere Pred würde sonst fälschlich als korrekt zählen.
-        labeled = [f for f in FIELDS if gt[f]]
-        ok = {f: pred[f] == gt[f] for f in labeled}
+        # Naiver 1:1-Vergleich nach Index — setzt voraus dass Reihenfolge
+        # der Positionen in Bild und Label übereinstimmt (von oben nach unten).
+        for idx in range(max(len(gt_pos), len(pred_pos))):
+            gt  = gt_pos[idx]  if idx < len(gt_pos)  else {}
+            pred = pred_pos[idx] if idx < len(pred_pos) else {}
 
-        for f in labeled:
-            correct[f][1] += 1
-            if ok[f]:
-                correct[f][0] += 1
-        if labeled and all(ok.values()):
-            correct_all += 1
-        n += 1
+            labeled = [f for f in field_names if gt.get(f)]
+            ok = {f: pred.get(f, "") == gt[f] for f in labeled}
 
-        status = "✓" if (labeled and all(ok.values())) else ("~" if any(ok.values()) else "✗")
-        print(f"  {status}  {img_name}")
-        print(f"    [Sold-to]")
-        print(f"      Name   : pred={pred['sold_to_party_name'] or MISSING_LABEL}  gt={gt['sold_to_party_name'] or MISSING_LABEL}  {'✓' if ok.get('sold_to_party_name', '-') == True else ('✗' if ok.get('sold_to_party_name', '-') == False else '-')}")
-        print(f"      Straße : pred={pred['sold_to_party_street'] or MISSING_LABEL} {pred['sold_to_party_street_number'] or ''}  gt={gt['sold_to_party_street'] or MISSING_LABEL} {gt['sold_to_party_street_number'] or ''}")
-        print(f"      PLZ/Ort: pred={pred['sold_to_party_zip'] or MISSING_LABEL} {pred['sold_to_party_city'] or MISSING_LABEL}  gt={gt['sold_to_party_zip'] or MISSING_LABEL} {gt['sold_to_party_city'] or MISSING_LABEL}")
-        print(f"      Land   : pred={pred['sold_to_party_country'] or MISSING_LABEL}  gt={gt['sold_to_party_country'] or MISSING_LABEL}")
-        print(f"    [Ship-to]")
-        print(f"      Name   : pred={pred['ship_to_party_name'] or MISSING_LABEL}  gt={gt['ship_to_party_name'] or MISSING_LABEL}  {'✓' if ok.get('ship_to_party_name', '-') == True else ('✗' if ok.get('ship_to_party_name', '-') == False else '-')}")
-        print(f"      Straße : pred={pred['ship_to_party_street'] or MISSING_LABEL} {pred['ship_to_party_street_number'] or ''}  gt={gt['ship_to_party_street'] or MISSING_LABEL} {gt['ship_to_party_street_number'] or ''}")
-        print(f"      PLZ/Ort: pred={pred['ship_to_party_zip'] or MISSING_LABEL} {pred['ship_to_party_city'] or MISSING_LABEL}  gt={gt['ship_to_party_zip'] or MISSING_LABEL} {gt['ship_to_party_city'] or MISSING_LABEL}")
-        print(f"      Land   : pred={pred['ship_to_party_country'] or MISSING_LABEL}  gt={gt['ship_to_party_country'] or MISSING_LABEL}")
+            for f in labeled:
+                correct[f][1] += 1
+                if ok[f]:
+                    correct[f][0] += 1
+
+            n_pos_total += 1
+            if labeled and all(ok.values()):
+                n_pos_correct += 1
+
+            status = "✓" if (labeled and all(ok.values())) else ("~" if any(ok.values()) else "✗")
+            print(f"    {status} Pos {idx+1}: "
+                  + "  ".join(f"{f}: pred={pred.get(f, MISSING_LABEL)} gt={gt.get(f, MISSING_LABEL)}"
+                              for f in field_names if gt.get(f) or pred.get(f)))
         print(f"    RAW: {result['raw_output']}\n")
 
-    if n:
+    if n_docs:
         print(f"{'='*55}")
-        for f in FIELDS:
+        for f in field_names:
             hits, total = correct[f]
             if total:
-                print(f"  {f:<40}: {hits}/{total}  ({hits/total:.1%})")
+                print(f"  {f:<25}: {hits}/{total}  ({hits/total:.1%})")
             else:
-                print(f"  {f:<40}: nicht gelabelt")
-        print(f"  {'Alle korrekt':<40}: {correct_all}/{n}  ({correct_all/n:.1%})")
+                print(f"  {f:<25}: nicht gelabelt")
+        if n_pos_total:
+            print(f"  {'Position komplett korrekt':<25}: {n_pos_correct}/{n_pos_total}  ({n_pos_correct/n_pos_total:.1%})")
         print(f"{'='*55}")
 
 
@@ -516,7 +433,7 @@ def evaluate(labels_file: str, img_dir: str, model, processor, device):
 # ---------------------------------------------------------------------------
 def main():
     parser = argparse.ArgumentParser(
-        description="Donut Inferenz: Felder + Konfidenz aus Dokument-Bildern"
+        description="Donut Inferenz: Positionsdaten + Konfidenz aus Dokument-Bildern"
     )
     parser.add_argument("--image",  help="Einzelnes Bild")
     parser.add_argument("--pdf",    help="PDF-Datei (verarbeitet Seite 1)")
@@ -550,27 +467,23 @@ def main():
             result = predict_single(src, model, processor, device)
         elapsed = time.time() - t0
 
-        parsed  = result["parsed"]
-        conf    = result["confidence"]
-        doc_lbl = confidence_label(conf["document"])
+        positions = result["positions"]
+        conf      = result["confidence"]
+        doc_lbl   = confidence_label(conf["document"])
 
         print("\n" + "=" * 55)
-        print(f"  [Sold-to Party]")
-        print(f"  Name               : {parsed.get('sold_to_party_name',              MISSING_LABEL)}")
-        print(f"  Straße             : {parsed.get('sold_to_party_street',            MISSING_LABEL)} {parsed.get('sold_to_party_street_number', '')}")
-        print(f"  PLZ / Ort          : {parsed.get('sold_to_party_zip',               MISSING_LABEL)} {parsed.get('sold_to_party_city', '')}")
-        print(f"  Land               : {parsed.get('sold_to_party_country',           MISSING_LABEL)}")
-        print(f"  [Ship-to Party]")
-        print(f"  Name               : {parsed.get('ship_to_party_name',              MISSING_LABEL)}")
-        print(f"  Straße             : {parsed.get('ship_to_party_street',            MISSING_LABEL)} {parsed.get('ship_to_party_street_number', '')}")
-        print(f"  PLZ / Ort          : {parsed.get('ship_to_party_zip',               MISSING_LABEL)} {parsed.get('ship_to_party_city', '')}")
-        print(f"  Land               : {parsed.get('ship_to_party_country',           MISSING_LABEL)}")
-        # ▼ NEUES FELD: Ausgabe für --image / --pdf Modus
-        # print(f"  Mein Feld          : {parsed.get('mein_feld', MISSING_LABEL)}")
-        print(f"  Rohausgabe         : {result['raw_output']}")
-        print(f"  Dok-Konfidenz      : {conf['document']:.1%}  [{doc_lbl}]")
-        for field, fc in conf["fields"].items():
-            print(f"  Feld '{field}'  : {fc:.1%}  [{confidence_label(fc)}]")
+        print(f"  {len(positions)} Position(en) gefunden")
+        for idx, pos in enumerate(positions, 1):
+            print(f"\n  [Position {idx}]")
+            for name, _, _ in POSITION_FIELDS:
+                print(f"    {name:<22}: {pos.get(name, MISSING_LABEL)}")
+            if idx - 1 < len(conf["positions"]):
+                for field, fc in conf["positions"][idx - 1].items():
+                    print(f"      Konf '{field}': {fc:.1%}  [{confidence_label(fc)}]")
+        # ▼ NEUES FELD: erscheint automatisch da POSITION_FIELDS durchlaufen wird
+        print(f"\n  Rohausgabe         : {result['raw_output']}")
+        print(f"  Dok-Konfidenz (avg): {conf['document']:.1%}  [{doc_lbl}]")
+        print(f"  Dok-Konfidenz (min): {conf['document_min']:.1%}")
         print(f"  Dauer              : {elapsed:.3f}s")
 
         if args.show_tokens:
@@ -589,13 +502,15 @@ def main():
         results = process_directory(args.dir, model, processor, device)
 
         if results:
-            found    = sum(1 for r in results if r["sold_to_party_name"] != MISSING_LABEL)
+            found    = sum(1 for r in results if r["positions"])
             high     = sum(1 for r in results if r["confidence_label"] == "HIGH")
             med      = sum(1 for r in results if r["confidence_label"] == "MED")
             low      = sum(1 for r in results if r["confidence_label"] == "LOW")
             avg_time = sum(r["time_s"] for r in results) / len(results)
+            total_pos = sum(len(r["positions"]) for r in results)
             print(f"\n{'='*55}")
-            print(f"  Erkannt : {found}/{len(results)} | HIGH={high} MED={med} LOW={low}")
+            print(f"  Dokumente mit Positionen: {found}/{len(results)} | Positionen gesamt: {total_pos}")
+            print(f"  HIGH={high} MED={med} LOW={low}")
             print(f"  Ø Zeit  : {avg_time:.2f}s/Bild")
             print(f"{'='*55}")
 

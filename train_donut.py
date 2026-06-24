@@ -1,6 +1,7 @@
 """
-Donut Trainings-Script — extrahiert Adressfelder aus Dokumenten.
-Unterstützt Dokumente mit fehlenden Feldern.
+Donut Trainings-Script — extrahiert Positionsdaten (Tabellenzeilen) aus
+Bestelldokumenten. Jedes Dokument kann mehrere Positionen haben.
+Unterstützt Positionen mit fehlenden Feldern.
 
 Voraussetzungen:
     pip install "torch>=2.6.0" torchvision --index-url https://download.pytorch.org/whl/cu124
@@ -32,50 +33,63 @@ TRAIN_DIR         = Path("data/train")
 VAL_DIR           = Path("data/val")
 OUTPUT_DIR        = Path("output/donut_orders")
 
-TASK_TOKEN             = "<s_order>"
-TASK_END_TOKEN         = "</s_order>"
-NAME_TOKEN    = "<s_sold_to_party_name>"
-NAME_END      = "</s_sold_to_party_name>"
-STREET_TOKEN           = "<s_sold_to_party_street>"
-STREET_END             = "</s_sold_to_party_street>"
-STREET_NUM_TOKEN       = "<s_sold_to_party_street_number>"
-STREET_NUM_END         = "</s_sold_to_party_street_number>"
-ZIP_TOKEN              = "<s_sold_to_party_zip>"
-ZIP_END                = "</s_sold_to_party_zip>"
-CITY_TOKEN             = "<s_sold_to_party_city>"
-CITY_END               = "</s_sold_to_party_city>"
-COUNTRY_TOKEN          = "<s_sold_to_party_country>"
-COUNTRY_END            = "</s_sold_to_party_country>"
-SHIP_NAME_TOKEN        = "<s_ship_to_party_name>"
-SHIP_NAME_END          = "</s_ship_to_party_name>"
-SHIP_STREET_TOKEN      = "<s_ship_to_party_street>"
-SHIP_STREET_END        = "</s_ship_to_party_street>"
-SHIP_STREET_NUM_TOKEN  = "<s_ship_to_party_street_number>"
-SHIP_STREET_NUM_END    = "</s_ship_to_party_street_number>"
-SHIP_ZIP_TOKEN         = "<s_ship_to_party_zip>"
-SHIP_ZIP_END           = "</s_ship_to_party_zip>"
-SHIP_CITY_TOKEN        = "<s_ship_to_party_city>"
-SHIP_CITY_END          = "</s_ship_to_party_city>"
-SHIP_COUNTRY_TOKEN     = "<s_ship_to_party_country>"
-SHIP_COUNTRY_END       = "</s_ship_to_party_country>"
-INV_NAME_TOKEN         = "<s_invoice_to_party_name>"
-INV_NAME_END           = "</s_invoice_to_party_name>"
-INV_STREET_TOKEN       = "<s_invoice_to_party_street>"
-INV_STREET_END         = "</s_invoice_to_party_street>"
-INV_STREET_NUM_TOKEN   = "<s_invoice_to_party_street_number>"
-INV_STREET_NUM_END     = "</s_invoice_to_party_street_number>"
-INV_ZIP_TOKEN          = "<s_invoice_to_party_zip>"
-INV_ZIP_END            = "</s_invoice_to_party_zip>"
-INV_CITY_TOKEN         = "<s_invoice_to_party_city>"
-INV_CITY_END           = "</s_invoice_to_party_city>"
-INV_COUNTRY_TOKEN      = "<s_invoice_to_party_country>"
-INV_COUNTRY_END        = "</s_invoice_to_party_country>"
+TASK_TOKEN              = "<s_order>"
+TASK_END_TOKEN          = "</s_order>"
+POSITION_TOKEN          = "<s_position>"
+POSITION_END            = "</s_position>"
+
+POS_NUM_TOKEN           = "<s_position_number>"
+POS_NUM_END             = "</s_position_number>"
+DELIVERY_DATE_TOKEN     = "<s_delivery_date>"
+DELIVERY_DATE_END       = "</s_delivery_date>"
+MATERIAL_TOKEN          = "<s_material>"
+MATERIAL_END            = "</s_material>"
+CUST_MATERIAL_TOKEN     = "<s_customer_material>"
+CUST_MATERIAL_END       = "</s_customer_material>"
+QUANTITY_TOKEN          = "<s_quantity>"
+QUANTITY_END            = "</s_quantity>"
+BASE_UNIT_TOKEN         = "<s_base_unit>"
+BASE_UNIT_END           = "</s_base_unit>"
+PRICE_PER_BASE_TOKEN    = "<s_price_per_base>"
+PRICE_PER_BASE_END      = "</s_price_per_base>"
+CURRENCY_TOKEN          = "<s_currency>"
+CURRENCY_END            = "</s_currency>"
+PRICE_BASE_TOKEN        = "<s_price_base>"
+PRICE_BASE_END          = "</s_price_base>"
+NET_REVENUE_TOKEN       = "<s_net_revenue>"
+NET_REVENUE_END         = "</s_net_revenue>"
+DRAWING_NUMBER_TOKEN    = "<s_drawing_number>"
+DRAWING_NUMBER_END      = "</s_drawing_number>"
+DRAWING_NUM_IDX_TOKEN   = "<s_drawing_number_index>"
+DRAWING_NUM_IDX_END     = "</s_drawing_number_index>"
 # ▼ NEUES FELD: Tokens hier definieren (Schema: "<s_feldname>" / "</s_feldname>")
 # MEIN_FELD_TOKEN = "<s_mein_feld>"
 # MEIN_FELD_END   = "</s_mein_feld>"
 
+# Zielformat (Labels, <s_order> wird automatisch vorne eingefügt):
+#   <s_position>
+#     <s_position_number>…</s_position_number>
+#     <s_delivery_date>…</s_delivery_date>
+#     <s_material>…</s_material>
+#     <s_customer_material>…</s_customer_material>
+#     <s_quantity>…</s_quantity>
+#     <s_base_unit>…</s_base_unit>
+#     <s_price_per_base>…</s_price_per_base>
+#     <s_currency>…</s_currency>
+#     <s_price_base>…</s_price_base>
+#     <s_net_revenue>…</s_net_revenue>
+#     <s_drawing_number>…</s_drawing_number>
+#     <s_drawing_number_index>…</s_drawing_number_index>
+#   </s_position>
+#   <s_position>… nächste Position …</s_position>
+#   </s_order>
+#
+# WICHTIG: MAX_LENGTH muss zur Anzahl Positionen pro Dokument passen.
+# Jede Position braucht ~25-40 Tokens. Bei z.B. 10 Positionen/Dokument
+# auf mind. 400-500 hochsetzen, sonst werden Positionen abgeschnitten.
+
 IMAGE_SIZE        = (1280, 960)
-MAX_LENGTH        = 192
+MAX_LENGTH        = 768
 BATCH_SIZE        = 4   # 1280×960 braucht mehr VRAM
 NUM_EPOCHS        = 50
 LEARNING_RATE     = 3e-5
@@ -87,6 +101,24 @@ USE_AMP           = True
 
 torch.manual_seed(SEED)
 random.seed(SEED)
+
+# Reihenfolge + Tokens der Positionsfelder — an einer Stelle gepflegt,
+# damit Dataset und Token-Registrierung nicht auseinanderlaufen.
+POSITION_FIELDS = [
+    ("position_number",      POS_NUM_TOKEN,        POS_NUM_END),
+    ("delivery_date",        DELIVERY_DATE_TOKEN,  DELIVERY_DATE_END),
+    ("material",             MATERIAL_TOKEN,       MATERIAL_END),
+    ("customer_material",    CUST_MATERIAL_TOKEN,  CUST_MATERIAL_END),
+    ("quantity",              QUANTITY_TOKEN,       QUANTITY_END),
+    ("base_unit",             BASE_UNIT_TOKEN,      BASE_UNIT_END),
+    ("price_per_base",        PRICE_PER_BASE_TOKEN, PRICE_PER_BASE_END),
+    ("currency",               CURRENCY_TOKEN,       CURRENCY_END),
+    ("price_base",             PRICE_BASE_TOKEN,     PRICE_BASE_END),
+    ("net_revenue",            NET_REVENUE_TOKEN,    NET_REVENUE_END),
+    ("drawing_number",         DRAWING_NUMBER_TOKEN, DRAWING_NUMBER_END),
+    ("drawing_number_index",   DRAWING_NUM_IDX_TOKEN, DRAWING_NUM_IDX_END),
+    # ▼ NEUES FELD: ("mein_feld", MEIN_FELD_TOKEN, MEIN_FELD_END),
+]
 
 
 # ---------------------------------------------------------------------------
@@ -109,53 +141,20 @@ class OrderDataset(Dataset):
         img_path = self.data_dir / sample["file_name"]
         image    = Image.open(img_path).convert("RGB")
 
-        gt          = json.loads(sample["ground_truth"])
-        p          = gt["gt_parse"]
-        sold_to    = p.get("sold_to_party_name", "")
-        street     = p.get("sold_to_party_street", "")
-        street_num = p.get("sold_to_party_street_number", "")
-        zip_code   = p.get("sold_to_party_zip", "")
-        city       = p.get("sold_to_party_city", "")
-        country    = p.get("sold_to_party_country", "")
-        ship_name  = p.get("ship_to_party_name", "")
-        ship_str   = p.get("ship_to_party_street", "")
-        ship_num   = p.get("ship_to_party_street_number", "")
-        ship_zip   = p.get("ship_to_party_zip", "")
-        ship_city  = p.get("ship_to_party_city", "")
-        ship_cnt   = p.get("ship_to_party_country", "")
-        inv_name   = p.get("invoice_to_party_name", "")
-        inv_str    = p.get("invoice_to_party_street", "")
-        inv_num    = p.get("invoice_to_party_street_number", "")
-        inv_zip    = p.get("invoice_to_party_zip", "")
-        inv_city   = p.get("invoice_to_party_city", "")
-        inv_cnt    = p.get("invoice_to_party_country", "")
-        # ▼ NEUES FELD: Wert aus gt_parse lesen (Key = Feldname in der JSONL)
-        # mein_feld = p.get("mein_feld", "")
+        gt        = json.loads(sample["ground_truth"])
+        positions = gt["gt_parse"].get("positions", [])
 
-        # Fehlende Felder → Tag weglassen.
-        # Modell lernt: kein Tag im Output = Feld nicht im Dokument.
+        # Jede Position → eigener <s_position>-Block.
+        # Fehlende Felder innerhalb einer Position → Tag weglassen.
         parts = ""
-        if sold_to:    parts += f"{NAME_TOKEN}{sold_to}{NAME_END}"
-        if street:     parts += f"{STREET_TOKEN}{street}{STREET_END}"
-        if street_num: parts += f"{STREET_NUM_TOKEN}{street_num}{STREET_NUM_END}"
-        if zip_code:   parts += f"{ZIP_TOKEN}{zip_code}{ZIP_END}"
-        if city:       parts += f"{CITY_TOKEN}{city}{CITY_END}"
-        if country:    parts += f"{COUNTRY_TOKEN}{country}{COUNTRY_END}"
-        if ship_name:  parts += f"{SHIP_NAME_TOKEN}{ship_name}{SHIP_NAME_END}"
-        if ship_str:   parts += f"{SHIP_STREET_TOKEN}{ship_str}{SHIP_STREET_END}"
-        if ship_num:   parts += f"{SHIP_STREET_NUM_TOKEN}{ship_num}{SHIP_STREET_NUM_END}"
-        if ship_zip:   parts += f"{SHIP_ZIP_TOKEN}{ship_zip}{SHIP_ZIP_END}"
-        if ship_city:  parts += f"{SHIP_CITY_TOKEN}{ship_city}{SHIP_CITY_END}"
-        if ship_cnt:   parts += f"{SHIP_COUNTRY_TOKEN}{ship_cnt}{SHIP_COUNTRY_END}"
-        if inv_name:   parts += f"{INV_NAME_TOKEN}{inv_name}{INV_NAME_END}"
-        if inv_str:    parts += f"{INV_STREET_TOKEN}{inv_str}{INV_STREET_END}"
-        if inv_num:    parts += f"{INV_STREET_NUM_TOKEN}{inv_num}{INV_STREET_NUM_END}"
-        if inv_zip:    parts += f"{INV_ZIP_TOKEN}{inv_zip}{INV_ZIP_END}"
-        if inv_city:   parts += f"{INV_CITY_TOKEN}{inv_city}{INV_CITY_END}"
-        if inv_cnt:    parts += f"{INV_COUNTRY_TOKEN}{inv_cnt}{INV_COUNTRY_END}"
-        # ▼ NEUES FELD: Sequenz-Block anhängen
-        # if mein_feld:
-        #     parts += f"{MEIN_FELD_TOKEN}{mein_feld}{MEIN_FELD_END}"
+        for pos in positions:
+            pos_seq = ""
+            for field_name, start_tok, end_tok in POSITION_FIELDS:
+                value = pos.get(field_name, "")
+                if value:
+                    pos_seq += f"{start_tok}{value}{end_tok}"
+            if pos_seq:
+                parts += f"{POSITION_TOKEN}{pos_seq}{POSITION_END}"
         target_sequence = parts + TASK_END_TOKEN
 
         pixel_values = self.processor(
@@ -182,29 +181,14 @@ class OrderDataset(Dataset):
 def setup_model_and_processor():
     processor = DonutProcessor.from_pretrained(PRETRAINED_MODEL)
 
-    processor.tokenizer.add_special_tokens({"additional_special_tokens": [
-        TASK_TOKEN, TASK_END_TOKEN,
-        NAME_TOKEN, NAME_END,
-        STREET_TOKEN, STREET_END,
-        STREET_NUM_TOKEN, STREET_NUM_END,
-        ZIP_TOKEN, ZIP_END,
-        CITY_TOKEN, CITY_END,
-        COUNTRY_TOKEN, COUNTRY_END,
-        SHIP_NAME_TOKEN, SHIP_NAME_END,
-        SHIP_STREET_TOKEN, SHIP_STREET_END,
-        SHIP_STREET_NUM_TOKEN, SHIP_STREET_NUM_END,
-        SHIP_ZIP_TOKEN, SHIP_ZIP_END,
-        SHIP_CITY_TOKEN, SHIP_CITY_END,
-        SHIP_COUNTRY_TOKEN, SHIP_COUNTRY_END,
-        INV_NAME_TOKEN, INV_NAME_END,
-        INV_STREET_TOKEN, INV_STREET_END,
-        INV_STREET_NUM_TOKEN, INV_STREET_NUM_END,
-        INV_ZIP_TOKEN, INV_ZIP_END,
-        INV_CITY_TOKEN, INV_CITY_END,
-        INV_COUNTRY_TOKEN, INV_COUNTRY_END,
-        # ▼ NEUES FELD: beide Tokens hier eintragen
-        # MEIN_FELD_TOKEN, MEIN_FELD_END,
-    ]})
+    additional_tokens = [TASK_TOKEN, TASK_END_TOKEN, POSITION_TOKEN, POSITION_END]
+    for _, start_tok, end_tok in POSITION_FIELDS:
+        additional_tokens += [start_tok, end_tok]
+
+    processor.tokenizer.add_special_tokens({
+        "additional_special_tokens": additional_tokens
+        # ▼ NEUES FELD: wird automatisch mit übernommen wenn in POSITION_FIELDS eingetragen
+    })
 
     processor.image_processor.size = {"height": IMAGE_SIZE[0], "width": IMAGE_SIZE[1]}
     processor.image_processor.do_align_long_axis = False
@@ -227,13 +211,15 @@ def setup_model_and_processor():
 
 
 # ---------------------------------------------------------------------------
-# Stopping Criteria (version-robust)
+# Stopping Criteria (version-robust, batch-sicher)
 # ---------------------------------------------------------------------------
 class StopOnTaskEnd(StoppingCriteria):
     def __init__(self, task_end_token_id: int):
         self.task_end_token_id = task_end_token_id
 
     def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs) -> bool:
+        # Erst stoppen wenn ALLE Items im Batch fertig sind — sonst werden
+        # bei BATCH_SIZE>1 die langsameren Sequenzen mitten im Wort abgeschnitten.
         return all(input_ids[i, -1].item() == self.task_end_token_id
                    for i in range(input_ids.shape[0]))
 
@@ -373,9 +359,6 @@ def train():
 
                     if normalize(pred) == normalize(gt):
                         correct += 1
-                    elif epoch >= 40:
-                        print(f"  [MISMATCH] PRED: {normalize(pred)}")
-                        print(f"  [MISMATCH]   GT: {normalize(gt)}")
                     n_total += 1
 
         avg_val_loss = val_loss / len(val_loader)
