@@ -9,9 +9,10 @@ Aufruf:
     python inference_donut.py --dir   dataset/images/
     python inference_donut.py --dir   dataset/images/ --output ergebnisse.json
     python inference_donut.py --eval  dataset/labels.jsonl
+    python inference_donut.py --eval  dataset/labels.jsonl --output-xlsx fehler.xlsx
 
 Voraussetzungen:
-    pip install torch torchvision transformers sentencepiece Pillow pypdfium2
+    pip install torch torchvision transformers sentencepiece Pillow pypdfium2 openpyxl
 """
 
 import argparse
@@ -26,6 +27,8 @@ from typing import Optional
 import pypdfium2 as pdfium
 import torch
 import torch.nn.functional as F
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill
 from PIL import Image
 from transformers import (
     DonutProcessor, VisionEncoderDecoderModel,
@@ -362,7 +365,40 @@ def _normalize_value(v) -> str:
     return " ".join(str(v).split())
 
 
-def evaluate(labels_file: str, img_dir: str, model, processor, device):
+def _write_eval_xlsx(rows: list[dict], xlsx_path: str):
+    """Schreibt die Pred/GT-Gegenüberstellung als Excel-Datei.
+    Eine Zeile pro (Bild, Position, Feld). Falsche Zeilen rot markiert,
+    Autofilter auf der Kopfzeile damit man direkt nach 'Match=FALSCH' filtern kann.
+    """
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Eval"
+
+    headers = ["image", "position_index", "field", "pred", "gt", "match"]
+    ws.append(headers)
+    for cell in ws[1]:
+        cell.font = Font(bold=True)
+
+    red_fill = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
+
+    for row in rows:
+        ws.append([row["image"], row["position_index"], row["field"],
+                  row["pred"], row["gt"], "OK" if row["match"] else "FALSCH"])
+        if not row["match"]:
+            for cell in ws[ws.max_row]:
+                cell.fill = red_fill
+
+    ws.auto_filter.ref = ws.dimensions
+    for col_idx, header in enumerate(headers, 1):
+        values = [str(r.get(header, "")) for r in rows] + [header]
+        width = max(12, min(40, max(len(v) for v in values) + 2))
+        ws.column_dimensions[chr(64 + col_idx)].width = width
+
+    wb.save(xlsx_path)
+
+
+def evaluate(labels_file: str, img_dir: str, model, processor, device,
+            xlsx_path: str = None):
     with open(labels_file, encoding="utf-8") as f:
         labels = [_parse_label_entry(json.loads(l)) for l in f if l.strip()]
 
@@ -371,6 +407,7 @@ def evaluate(labels_file: str, img_dir: str, model, processor, device):
     n_docs        = 0
     n_pos_correct = 0
     n_pos_total   = 0
+    xlsx_rows: list[dict] = []
 
     print(f"{len(labels)} Labels. Starte Evaluation ...\n")
 
@@ -404,6 +441,14 @@ def evaluate(labels_file: str, img_dir: str, model, processor, device):
                 correct[f][1] += 1
                 if ok[f]:
                     correct[f][0] += 1
+                xlsx_rows.append({
+                    "image": img_name,
+                    "position_index": idx + 1,
+                    "field": f,
+                    "pred": pred.get(f, ""),
+                    "gt": gt[f],
+                    "match": ok[f],
+                })
 
             n_pos_total += 1
             if labeled and all(ok.values()):
@@ -427,6 +472,11 @@ def evaluate(labels_file: str, img_dir: str, model, processor, device):
             print(f"  {'Position komplett korrekt':<25}: {n_pos_correct}/{n_pos_total}  ({n_pos_correct/n_pos_total:.1%})")
         print(f"{'='*55}")
 
+    if xlsx_path and xlsx_rows:
+        _write_eval_xlsx(xlsx_rows, xlsx_path)
+        n_wrong = sum(1 for r in xlsx_rows if not r["match"])
+        print(f"\nExcel geschrieben: {xlsx_path}  ({n_wrong}/{len(xlsx_rows)} Zeilen FALSCH)")
+
 
 # ---------------------------------------------------------------------------
 # Main
@@ -443,6 +493,8 @@ def main():
                         help="Bild-Verzeichnis für --eval (Standard: dataset/images)")
     parser.add_argument("--model",  default=DEFAULT_MODEL)
     parser.add_argument("--output", default=None, help="JSON-Ausgabedatei")
+    parser.add_argument("--output-xlsx", default=None,
+                        help="Excel-Datei mit Pred/GT-Gegenüberstellung (nur bei --eval)")
     parser.add_argument("--show-tokens", action="store_true")
     args = parser.parse_args()
 
@@ -520,7 +572,8 @@ def main():
             print(f"\nErgebnisse: {args.output}")
 
     elif args.eval:
-        evaluate(args.eval, args.img_dir, model, processor, device)
+        evaluate(args.eval, args.img_dir, model, processor, device,
+                xlsx_path=args.output_xlsx)
 
 
 if __name__ == "__main__":
